@@ -1,0 +1,145 @@
+!DOCTYPE html
+html lang=zh-Hant
+head
+    meta charset=UTF-8
+    meta name=viewport content=width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no
+    title我的工作助手title
+    script src=httpscdn.tailwindcss.comscript
+    style
+        .highlight-now { border 2px solid #3b82f6; background-color #eff6ff; }
+        .emergency-task { background-color rgba(239, 68, 68, 0.2); }
+        .banner-active { display block !important; }
+    style
+head
+body class=bg-gray-50 text-gray-800 font-sans pb-20
+
+    div id=reminderBanner class=hidden bg-yellow-100 border-b border-yellow-300 p-3 sticky top-0 z-50 flex justify-between items-center
+        span id=bannerText class=text-sm font-bold text-yellow-800span
+        button onclick=deleteUntimedTask() class=bg-red-500 text-white px-3 py-1 rounded-full text-xs刪除button
+    div
+
+    div class=p-4
+        h1 class=text-2xl font-bold mb-4 text-center📅 工作日程 (Mon-Fri)h1
+        
+        div id=currentTime class=text-center text-blue-600 font-mono mb-4div
+
+        div class=bg-white p-4 rounded-xl shadow-sm mb-6 border border-gray-200
+            h2 class=font-bold mb-2新增突發事項h2
+            div class=grid grid-cols-2 gap-2 mb-2
+                input id=taskTime type=time class=border p-2 rounded
+                input id=taskDesc type=text placeholder=事項內容... class=border p-2 rounded
+            div
+            button onclick=addTask() class=w-full bg-blue-600 text-white py-2 rounded-lg font-bold加入清單button
+        div
+
+        div id=scheduleContainer class=space-y-2
+            div
+    div
+
+    div id=modal class=hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-[60]
+        div class=bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl
+            h3 class=text-xl font-bold mb-2 text-red-600⚠ 突發提醒h3
+            p id=modalText class=mb-6 text-gray-600p
+            div class=flex gap-3
+                button onclick=closeModalToBanner() class=flex-1 bg-gray-200 py-3 rounded-xl font-medium稍後(顯示於頂部)button
+                button onclick=deleteUntimedTask() class=flex-1 bg-red-500 text-white py-3 rounded-xl font-bold完成並刪除button
+            div
+        div
+    div
+
+    script
+         初始化數據
+        let tasks = JSON.parse(localStorage.getItem('myTasks'))  [
+            { day 'Mon', time '0800', desc '開場準備', type 'regular' },
+            { day 'Mon', time '0900', desc '例會', type 'regular' }
+        ];
+
+        function updateClock() {
+            const now = new Date();
+            const hkTime = now.toLocaleTimeString('zh-HK', { hour12 false });
+            document.getElementById('currentTime').innerText = `香港時間 ${hkTime}`;
+            renderSchedule();
+        }
+
+        function renderSchedule() {
+            const container = document.getElementById('scheduleContainer');
+            const now = new Date();
+            const currentHourMin = now.getHours().toString().padStart(2, '0') +  + now.getMinutes().toString().padStart(2, '0');
+            
+             排序：按時間先後
+            tasks.sort((a, b) = a.time.localeCompare(b.time));
+
+            container.innerHTML = tasks.map(task = `
+                div class=p-3 rounded-lg border ${task.type === 'emergency'  'emergency-task border-red-300'  'bg-white border-gray-100'} 
+                    ${currentHourMin = task.time && currentHourMin = addMinutes(task.time, 30)  'highlight-now'  ''}
+                    div class=flex justify-between items-center
+                        span class=font-mono font-bold text-blue-900${task.time}span
+                        span class=flex-1 px-4${task.desc}span
+                        button onclick=removeTask('${task.time}', '${task.desc}') class=text-gray-300 text-xs✕button
+                    div
+                div
+            `).join('');
+        }
+
+        function addMinutes(time, mins) {
+            let [h, m] = time.split('').map(Number);
+            m += mins;
+            return `${String(h + Math.floor(m60)).padStart(2,'0')}${String(m%60).padStart(2,'0')}`;
+        }
+
+        function addTask() {
+            const time = document.getElementById('taskTime').value;
+            const desc = document.getElementById('taskDesc').value;
+            if(!desc) return;
+
+            if(time) {
+                 有時間：突發事項 (紅底)
+                tasks.push({ time, desc, type 'emergency' });
+            } else {
+                 無時間：存入待辦 Pop-up
+                localStorage.setItem('untimedTask', desc);
+                checkUntimedTask();
+            }
+            saveAndRender();
+        }
+
+        function removeTask(time, desc) {
+            tasks = tasks.filter(t = !(t.time === time && t.desc === desc));
+            saveAndRender();
+        }
+
+        function saveAndRender() {
+            localStorage.setItem('myTasks', JSON.stringify(tasks));
+            renderSchedule();
+        }
+
+         Pop-up 邏輯
+        function checkUntimedTask() {
+            const untimed = localStorage.getItem('untimedTask');
+            if (untimed) {
+                document.getElementById('modalText').innerText = untimed;
+                document.getElementById('modal').classList.remove('hidden');
+            }
+        }
+
+        function closeModalToBanner() {
+            const untimed = localStorage.getItem('untimedTask');
+            document.getElementById('modal').classList.add('hidden');
+            document.getElementById('bannerText').innerText = `📌 提醒：${untimed}`;
+            document.getElementById('reminderBanner').classList.add('banner-active');
+        }
+
+        function deleteUntimedTask() {
+            localStorage.removeItem('untimedTask');
+            document.getElementById('modal').classList.add('hidden');
+            document.getElementById('reminderBanner').classList.remove('banner-active');
+        }
+
+        setInterval(updateClock, 1000);
+        window.onload = () = {
+            updateClock();
+            checkUntimedTask();
+        };
+    script
+body
+html
