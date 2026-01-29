@@ -239,4 +239,170 @@
 
         // --- Banner & Popup 控制 ---
         function showBanner(msg) {
-            document.getElementById
+            document.getElementById('bannerText').innerText = msg;
+            document.getElementById('topBanner').classList.remove('inactive');
+            document.getElementById('topBanner').classList.add('active');
+        }
+        function closeBanner() {
+            localStorage.removeItem('pendingReminder');
+            document.getElementById('topBanner').classList.remove('active');
+            document.getElementById('topBanner').classList.add('inactive');
+        }
+        function dismissPopup() {
+            const msg = localStorage.getItem('pendingReminder');
+            showBanner(msg);
+            document.getElementById('popupModal').classList.add('hidden');
+        }
+
+        // --- 日覽導航 ---
+        function navigateCalendar(step) {
+            if (isCalCollapsed) {
+                const d = new Date(selectedDateStr); d.setDate(d.getDate() + (step * 7));
+                selectedDateStr = formatDate(d); viewDate = new Date(selectedDateStr);
+            } else { viewDate.setMonth(viewDate.getMonth() + step); }
+            renderCalendar(); renderDailyTasks();
+        }
+        function toggleCalendar() { isCalCollapsed = !isCalCollapsed; localStorage.setItem('v16_cal_collapsed', isCalCollapsed); renderCalendar(); }
+        function renderCalendar() {
+            const grid = document.getElementById('calendarGrid'); grid.innerHTML = '';
+            const m = isCalCollapsed ? new Date(selectedDateStr).getMonth() : viewDate.getMonth();
+            const y = isCalCollapsed ? new Date(selectedDateStr).getFullYear() : viewDate.getFullYear();
+            document.getElementById('calendarTitle').innerText = `${y}年 ${m + 1}月`;
+            document.getElementById('calBtn').innerText = isCalCollapsed ? "展開全月 ▼" : "收起日曆 ▲";
+            if (isCalCollapsed) {
+                const current = new Date(selectedDateStr); const sun = new Date(current); sun.setDate(current.getDate() - current.getDay());
+                for (let i = 0; i < 7; i++) { const d = new Date(sun); d.setDate(sun.getDate() + i); renderDayCell(grid, d); }
+            } else {
+                const yv = viewDate.getFullYear(), mv = viewDate.getMonth(), f = new Date(yv, mv, 1).getDay(), t = new Date(yv, mv + 1, 0).getDate();
+                for (let i = 0; i < f; i++) grid.innerHTML += '<div></div>';
+                for (let d = 1; d <= t; d++) renderDayCell(grid, new Date(yv, mv, d));
+            }
+        }
+        function renderDayCell(container, d) {
+            const dStr = formatDate(d), isSun = d.getDay() === 0, h = HK_HOLIDAYS_2026[dStr], s = schedule[dStr]?.shiftId ? shifts[schedule[dStr].shiftId] : null;
+            const div = document.createElement('div'); div.className = `day-cell ${dStr === selectedDateStr ? 'selected' : ''}`;
+            div.onclick = () => { selectedDateStr = dStr; renderCalendar(); renderDailyTasks(); };
+            div.innerHTML = `${h ? `<span class="holiday-name">${h}</span>` : ''}<span class="text-xs font-bold ${isSun || h ? 'text-sunday' : ''}">${d.getDate()}</span>${s ? `<div class="shift-tag" style="background:${s.color}20; color:${s.color}">${s.name}</div>` : ''}`;
+            container.appendChild(div);
+        }
+
+        // --- 數據與同步 ---
+        function updateStatusDisplay() {
+            document.getElementById('lastSyncDisplay').innerText = `最後同步: ${localStorage.getItem('v16_last_sync') || "--"}`;
+            document.getElementById('lastUploadDisplay').innerText = `最後上傳: ${localStorage.getItem('v16_last_upload') || "--"}`;
+        }
+        function initGoogleAuth() {
+            tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: CLIENT_ID, scope: SCOPES,
+                callback: (r) => { accessToken = r.access_token; localStorage.setItem('v16_token', accessToken); updateLoginStatusUI(true); syncAllWithCloud(); }
+            });
+        }
+        function handleAuthClick() { tokenClient.requestAccessToken({prompt: 'consent'}); }
+        function handleSignoutClick() { localStorage.removeItem('v16_token'); location.reload(); }
+        function updateLoginStatusUI(isLog) {
+            const dot = document.getElementById('syncDot'); if(isLog) { dot.className = "w-2 h-2 rounded-full bg-green-500 animate-pulse"; document.getElementById('syncStatusGlobal').innerHTML = `<span class="${dot.className}"></span> 雲端同步中`; document.getElementById('auth_button').classList.add('hidden'); document.getElementById('signout_button').classList.remove('hidden'); }
+        }
+        async function syncAllWithCloud() {
+            if (!accessToken) return;
+            try {
+                const s = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='backup_v16.json'`, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+                const l = await s.json();
+                if (l.files?.length > 0) {
+                    const f = await fetch(`https://www.googleapis.com/drive/v3/files/${l.files[0].id}?alt=media`, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+                    const data = await f.json();
+                    localStorage.setItem('v16_shifts', JSON.stringify(data.shifts));
+                    localStorage.setItem('v16_schedule', JSON.stringify(data.schedule));
+                    const tx = db.transaction("memos", "readwrite"); tx.objectStore("memos").clear();
+                    if(data.memos) data.memos.forEach(m => tx.objectStore("memos").add(m));
+                    localStorage.setItem('v16_last_sync', new Date().toLocaleTimeString()); updateStatusDisplay();
+                    tx.oncomplete = () => { if(confirm("雲端同步完成，是否重新載入？")) location.reload(); };
+                }
+            } catch(e) {}
+        }
+        async function uploadBackupToCloud(isM = false) {
+            if (!accessToken) return;
+            const tx = db.transaction("memos", "readonly");
+            const all = await new Promise(r => tx.objectStore("memos").getAll().onsuccess = e => r(e.target.result));
+            const data = { shifts: JSON.parse(localStorage.getItem('v16_shifts')), schedule: JSON.parse(localStorage.getItem('v16_schedule')), memos: all.map(m => ({...m, photoBlob: null})), version: "V18" };
+            const meta = { name: 'backup_v16.json', parents: ['appDataFolder'] }, form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+            form.append('file', new Blob([JSON.stringify(data)], { type: 'application/json' }));
+            try {
+                const s = await fetch(`https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='backup_v16.json'`, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+                const l = await s.json();
+                let url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', method = 'POST';
+                if(l.files?.length > 0) { url = `https://www.googleapis.com/upload/drive/v3/files/${l.files[0].id}?uploadType=multipart`; method = 'PATCH'; }
+                await fetch(url, { method, headers: { 'Authorization': `Bearer ${accessToken}` }, body: form });
+                localStorage.setItem('v16_last_upload', new Date().toLocaleTimeString()); updateStatusDisplay();
+                if(isM) alert("上傳成功！");
+            } catch(e) {}
+        }
+
+        // --- 其餘通用函數 ---
+        function togglePage(p) { ['mainPage', 'memoPage', 'settingsPage'].forEach(id => document.getElementById(id).classList.toggle('hidden', id !== p)); if(p === 'settingsPage') renderShiftEditor(); if(p === 'mainPage') renderCalendar(); }
+        function saveShifts() { localStorage.setItem('v16_shifts', JSON.stringify(shifts)); uploadBackupToCloud(); }
+        function saveData() { localStorage.setItem('v16_schedule', JSON.stringify(schedule)); }
+        function createNewShift() { const id = 'S' + Date.now(); shifts[id] = { name: "新更份", color: "#333333", tasks: [] }; saveShifts(); renderShiftEditor(); renderShiftButtons(); }
+        function renderShiftButtons() {
+            const c = document.getElementById('shiftButtons');
+            c.innerHTML = Object.keys(shifts).map(id => `<button onclick="applyShift('${id}')" class="bg-white px-4 py-3 rounded-xl font-bold border" style="color:${shifts[id].color}">${shifts[id].name}</button>`).join('') + `<button onclick="applyShift(null)" class="px-4 py-3 bg-gray-200 rounded-xl font-bold text-gray-500">清除</button>`;
+        }
+        function applyShift(id) {
+            if (id === null && !confirm("清除？")) return;
+            if(!schedule[selectedDateStr]) schedule[selectedDateStr] = { shiftId: null, customTasks: [] };
+            schedule[selectedDateStr].shiftId = id; saveData();
+            let n = new Date(selectedDateStr); n.setDate(n.getDate() + 1); selectedDateStr = formatDate(n);
+            renderCalendar(); renderDailyTasks(); uploadBackupToCloud();
+        }
+        function deleteTask(i, t) { if(!confirm("刪除？")) return; if(t) alert("範本內容請在設定頁修改。"); else { schedule[selectedDateStr].customTasks.splice(i-(schedule[selectedDateStr].shiftId?shifts[schedule[selectedDateStr].shiftId].tasks.length:0),1); saveData(); renderDailyTasks(); uploadBackupToCloud(); } }
+        async function saveMemo() {
+            const btn = document.getElementById('saveMemoBtn'); const cat = document.getElementById('memoCatSelect').value === 'NEW' ? document.getElementById('memoCatNew').value : document.getElementById('memoCatSelect').value; const title = document.getElementById('memoTitleInput').value || "無標題"; const content = document.getElementById('memoContentInput').value; const photoFile = document.getElementById('memoPhotoInput').files[0];
+            btn.disabled = true; btn.innerText = "上傳中..."; let driveId = photoFile ? await uploadFileToDrive(photoFile) : null;
+            const tx = db.transaction("memos", "readwrite"); tx.objectStore("memos").add({ cat: cat || "一般", title, content, date: Date.now(), googleDriveFileId: driveId });
+            tx.oncomplete = () => uploadBackupToCloud().then(() => location.reload());
+        }
+        async function uploadFileToDrive(file) {
+            if (!accessToken) return null;
+            const meta = { name: `photo_${Date.now()}.jpg`, parents: ['appDataFolder'] }, form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' })); form.append('file', file);
+            const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}` }, body: form });
+            const d = await r.json(); return d.id;
+        }
+        async function getFileUrlFromDrive(id) {
+            if (!accessToken || !id) return null;
+            const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+            const b = await r.blob(); return URL.createObjectURL(b);
+        }
+        function renderMemos() {
+            if(!db) return;
+            db.transaction("memos", "readonly").objectStore("memos").getAll().onsuccess = e => {
+                const groups = {}; e.target.result.forEach(m => { if(!groups[m.cat]) groups[m.cat] = []; groups[m.cat].push(m); });
+                document.getElementById('memoList').innerHTML = Object.keys(groups).map(cat => `<div class="ios-card overflow-hidden"><div onclick="this.nextElementSibling.classList.toggle('hidden')" class="p-4 bg-gray-50 flex justify-between font-bold"><span>${cat}</span><span class="text-blue-500 text-xs">▼</span></div><div class="hidden p-2 space-y-3 border-t bg-white">${groups[cat].map(m => `<div id="memo-${m.id}" class="p-3 border rounded-xl bg-gray-50/50"><h4 class="font-bold text-sm text-blue-900">${m.title}</h4><p class="text-xs text-gray-700 my-2">${m.content}</p>${m.googleDriveFileId ? `<div id="img-loader-${m.id}" class="py-4 flex justify-center"><div class="spinner"></div></div>` : ''}<div class="flex justify-between text-[9px] text-gray-400"><span>${new Date(m.date).toLocaleString()}</span><button onclick="deleteMemo(${m.id})" class="text-red-400">✕ 刪除</button></div></div>`).join('')}</div></div>`).join('');
+                e.target.result.forEach(async m => { if(m.googleDriveFileId) { const url = await getFileUrlFromDrive(m.googleDriveFileId); const loader = document.getElementById(`img-loader-${m.id}`); if(loader && url) loader.innerHTML = `<img src="${url}" onclick="openFullImg(this.src)" class="rounded-lg w-full">`; } });
+            };
+        }
+        function deleteMemo(id) { if(confirm("確定刪除？")) db.transaction("memos", "readwrite").objectStore("memos").delete(id).onsuccess = () => uploadBackupToCloud().then(()=>location.reload()); }
+        function openMemo(id) { togglePage('memoPage'); setTimeout(() => { const el = document.getElementById(`memo-${id}`); if(el) { el.scrollIntoView({behavior:'smooth'}); el.parentElement.classList.remove('hidden'); } }, 500); }
+        function renderShiftEditor() {
+            const container = document.getElementById('shiftManagerList');
+            container.innerHTML = Object.keys(shifts).map(id => `<div class="ios-card p-4 border-l-8" style="border-color:${shifts[id].color}"><div class="flex gap-2 mb-2"><input type="text" value="${shifts[id].name}" onchange="shifts['${id}'].name=this.value;saveShifts()" class="font-bold flex-1 border-b outline-none"><input type="color" value="${shifts[id].color}" onchange="shifts['${id}'].color=this.value;saveShifts()" class="w-8 h-8"><button onclick="delete shifts['${id}'];saveShifts();renderShiftEditor();renderShiftButtons()" class="text-red-500 font-bold">✕</button></div><div class="space-y-2 mb-3">${shifts[id].tasks.map((t, ti) => `<div class="space-y-1 p-2 bg-gray-50 rounded-lg"><div class="flex gap-1"><input type="time" value="${t.time}" onchange="shifts['${id}'].tasks[${ti}].time=this.value;saveShifts()" class="text-[10px] border rounded p-1"><input type="text" value="${t.desc}" onchange="shifts['${id}'].tasks[${ti}].desc=this.value;saveShifts()" class="text-[10px] border rounded p-1 flex-1"><button onclick="shifts['${id}'].tasks.splice(${ti},1);saveShifts();renderShiftEditor()" class="text-gray-400">✕</button></div><select data-val="${t.memoId}" onchange="shifts['${id}'].tasks[${ti}].memoId=this.value?parseInt(this.value):null;saveShifts()" class="memo-link-select w-full text-[9px] bg-transparent text-blue-600 border-none outline-none"></select></div>`).join('')}</div><button onclick="shifts['${id}'].tasks.push({time:'08:00',desc:'新項目',memoId:null});saveShifts();renderShiftEditor()" class="text-xs text-blue-500 font-bold">+ 增加子項目</button></div>`).join('');
+            updateMemoLinkDropdowns();
+        }
+        function updateMemoLinkDropdowns() { if(!db) return; db.transaction("memos", "readonly").objectStore("memos").getAll().onsuccess = e => { const html = '<option value="">🔗 連結備忘錄</option>' + e.target.result.map(m => `<option value="${m.id}">${m.cat}: ${m.title}</option>`).join(''); document.getElementById('manualMemoLink').innerHTML = html; document.querySelectorAll('.memo-link-select').forEach(sel => { sel.innerHTML = html; sel.value = sel.getAttribute('data-val') || ""; }); }; }
+        function updateCatDropdown() { if(!db) return; db.transaction("memos", "readonly").objectStore("memos").getAll().onsuccess = e => { const cats = [...new Set(e.target.result.map(m => m.cat))]; document.getElementById('memoCatSelect').innerHTML = '<option value="">選擇分類...</option><option value="NEW">+ 新分類</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join(''); }; }
+        function confirmManualSync() { if(!accessToken) { alert("請先登入"); return; } if(confirm("確定手動同步(下載)？")) syncAllWithCloud(); }
+        function confirmManualUpload() { if(!accessToken) { alert("請先登入"); return; } if(confirm("確定上傳覆蓋雲端？")) uploadBackupToCloud(true); }
+        let sc = 1, lsc = 1, stX = 0, stY = 0, pX = 0, pY = 0;
+        function openFullImg(s) {
+            const m = document.getElementById('img-modal'); const i = document.getElementById('modal-content'); i.src = s; sc = 1; pX = 0; pY = 0; m.style.display = 'block';
+            m.ontouchstart = e => { if(e.touches.length === 2) lsc = sc; else { stX = e.touches[0].clientX - pX; stY = e.touches[0].clientY - pY; } };
+            m.ontouchmove = e => { if(e.touches.length === 2) { const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); if(!this.sD) this.sD = d; sc = Math.min(Math.max(1, lsc * (d / this.sD)), 4); } else { pX = e.touches[0].clientX - stX; pY = e.touches[0].clientY - stY; } i.style.transform = `translate(${pX}px, ${pY}px) scale(${sc})`; };
+            m.ontouchend = () => this.sD = null;
+        }
+        function closeImgModal() { document.getElementById('img-modal').style.display = 'none'; }
+        function toggleMemoInput() { document.getElementById('memoInputSection').classList.toggle('hidden'); }
+        function toggleNewCatInput() { document.getElementById('memoCatNew').classList.toggle('hidden', document.getElementById('memoCatSelect').value !== 'NEW'); }
+        window.onload = init;
+    </script>
+</body>
+</html>
