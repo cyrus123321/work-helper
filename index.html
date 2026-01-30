@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>工作助手 V26.0</title>
+    <title>工作助手 V26.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
@@ -44,7 +44,7 @@
     <div class="global-status">
         <div class="flex justify-between items-center">
             <div id="syncStatusGlobal" class="text-[11px] font-bold flex items-center gap-1 text-gray-400"><span id="syncDot" class="w-2 h-2 rounded-full bg-gray-300"></span> 離線作業 (手遊模式)</div>
-            <div class="text-[10px] text-gray-300 font-mono">v26.0 RAW</div>
+            <div class="text-[10px] text-gray-300 font-mono">v26.1 RAW</div>
         </div>
     </div>
 
@@ -52,7 +52,6 @@
         <header class="text-center py-4">
             <div id="clock" class="text-6xl font-mono font-black text-gray-900 tracking-tighter">00:00:00</div>
             <div id="fullDate" class="text-gray-500 font-bold mt-1 text-xs mb-3"></div>
-            
             <div id="weatherInfo" class="flex justify-center gap-2 flex-wrap">
                 <div class="weather-badge">樂富: <span id="tempLF">--</span>°C | <span id="rhLF">--</span>%</div>
                 <div class="weather-badge">葵芳: <span id="tempKF">--</span>°C | <span id="rhKF">--</span>%</div>
@@ -63,11 +62,12 @@
         <section class="ios-card p-2 mb-4">
             <div class="flex justify-between items-center px-2 mb-2">
                 <button onclick="navigateCalendar(-1)" class="text-blue-600 text-xl font-bold p-1">◀</button>
-                <h2 id="calendarTitle" class="font-black text-sm"></h2>
+                <h2 id="calendarTitle" class="font-black text-sm">加載中...</h2>
                 <button onclick="navigateCalendar(1)" class="text-blue-600 text-xl font-bold p-1">▶</button>
             </div>
             <div class="grid grid-cols-7 mb-1 text-[10px] text-gray-400 text-center"><div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div></div>
             <div id="calendarGrid" class="grid grid-cols-7 gap-1 text-center"></div>
+            <button onclick="toggleCalendar()" id="calBtn" class="w-full text-[10px] text-blue-500 py-2 mt-2 border-t">展開全月 ▼</button>
         </section>
 
         <div id="shiftButtons" class="flex flex-wrap gap-2 mb-6"></div>
@@ -118,6 +118,13 @@
         <button onclick="togglePage('settingsPage')"><span class="text-xl">⚙️</span><div class="text-[10px] font-bold">設定</div></button>
     </nav>
 
+    <div id="popupModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-[300] hidden flex items-center justify-center p-6 text-center">
+        <div class="bg-white rounded-[25px] p-6 w-full max-w-xs shadow-2xl">
+            <div class="text-4xl mb-3">⚠️</div><h3 class="text-lg font-bold mb-4" id="popupMsg"></h3>
+            <button onclick="dismissPopup()" class="w-full py-3 bg-blue-600 text-white rounded-xl font-bold">知道了</button>
+        </div>
+    </div>
+
     <script>
         const CLIENT_ID = '373174102678-3hv6rgle32uael4okmt9vtasnmg341fr.apps.googleusercontent.com';
         const SCOPES = 'https://www.googleapis.com/auth/drive.file';
@@ -139,12 +146,17 @@
             updateClock(); setInterval(updateClock, 1000);
             renderCalendar(); renderShiftButtons(); renderDailyTasks();
             renderMemos(); updateCatDropdown(); initGoogleAuth();
-            fetchWeather(); setInterval(fetchWeather, 600000); // 10分鐘更新一次天氣
+            fetchWeather(); setInterval(fetchWeather, 600000);
             if(accessToken) updateLoginStatusUI(true);
         }
 
         function formatDate(d) {
             return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+
+        function parseDate(str) {
+            const parts = str.split('-');
+            return new Date(parts[0], parts[1] - 1, parts[2]);
         }
 
         function updateClock() {
@@ -153,31 +165,63 @@
             document.getElementById('fullDate').innerText = now.toLocaleDateString('zh-HK', {year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'});
         }
 
-        // --- 天文台 API 數據抓取 ---
         async function fetchWeather() {
             try {
-                // 抓取實時氣溫濕度
                 const rhrResponse = await fetch('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=tc');
                 const rhrData = await rhrResponse.json();
-                
-                // 樂富取黃大仙站(九龍城/黃大仙區), 葵芳取葵涌站
                 const lfTemp = rhrData.temperature.data.find(i => i.place === '黃大仙')?.value || "--";
                 const kfTemp = rhrData.temperature.data.find(i => i.place === '葵涌')?.value || "--";
                 const rh = rhrData.humidity.data[0]?.value || "--";
-
                 document.getElementById('tempLF').innerText = lfTemp;
                 document.getElementById('rhLF').innerText = rh;
                 document.getElementById('tempKF').innerText = kfTemp;
                 document.getElementById('rhKF').innerText = rh;
-
-                // 抓取九天天氣預報中的降雨概率
                 const fndResponse = await fetch('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=fnd&lang=tc');
                 const fndData = await fndResponse.json();
                 document.getElementById('rainProb').innerText = fndData.weatherForecast[0]?.psr || "未知";
-            } catch(e) { console.error("天氣加載失敗", e); }
+            } catch(e) {}
         }
 
-        // --- 備忘錄與相片收納邏輯 ---
+        function renderCalendar() {
+            const grid = document.getElementById('calendarGrid'); grid.innerHTML = '';
+            const m = isCalCollapsed ? parseDate(selectedDateStr).getMonth() : viewDate.getMonth();
+            const y = isCalCollapsed ? parseDate(selectedDateStr).getFullYear() : viewDate.getFullYear();
+            document.getElementById('calendarTitle').innerText = `${y}年 ${m + 1}月`;
+            document.getElementById('calBtn').innerText = isCalCollapsed ? "展開全月 ▼" : "收起日曆 ▲";
+
+            if (isCalCollapsed) {
+                const current = parseDate(selectedDateStr);
+                const sun = new Date(current); sun.setDate(current.getDate() - current.getDay());
+                for (let i = 0; i < 7; i++) { const d = new Date(sun); d.setDate(sun.getDate() + i); renderDayCell(grid, d); }
+            } else {
+                const f = new Date(y, m, 1).getDay(), t = new Date(y, m + 1, 0).getDate();
+                for (let i = 0; i < f; i++) grid.innerHTML += '<div></div>';
+                for (let d = 1; d <= t; d++) renderDayCell(grid, new Date(y, m, d));
+            }
+        }
+
+        function renderDayCell(c, d) {
+            const ds = formatDate(d), h = HK_HOLIDAYS_2026[ds], s = schedule[ds]?.shiftId ? shifts[schedule[ds].shiftId] : null;
+            const div = document.createElement('div'); div.className = `day-cell ${ds === selectedDateStr ? 'selected' : ''}`;
+            div.onclick = () => { selectedDateStr = ds; renderCalendar(); renderDailyTasks(); };
+            div.innerHTML = `${h ? `<span class="holiday-name">${h}</span>` : ''}<span class="text-xs font-bold ${d.getDay()===0||h?'text-sunday':''}">${d.getDate()}</span>${s?`<div class="shift-tag" style="background:${s.color}20;color:${s.color}">${s.name}</div>`:''}`;
+            c.appendChild(div);
+        }
+
+        function navigateCalendar(s) {
+            if(isCalCollapsed) {
+                let d = parseDate(selectedDateStr);
+                d.setDate(d.getDate() + s * 7);
+                selectedDateStr = formatDate(d);
+                viewDate = parseDate(selectedDateStr);
+            } else {
+                viewDate.setDate(1); // 先設為1號防止30/31號跳轉bug
+                viewDate.setMonth(viewDate.getMonth() + s);
+            }
+            renderCalendar(); renderDailyTasks();
+        }
+
+        // --- 全功能保留代碼 ---
         function renderMemos() {
             if(!db) return;
             const q = document.getElementById('memoSearchInput')?.value.toLowerCase() || "";
@@ -194,12 +238,8 @@
                         <div class="hidden p-2 space-y-3 bg-white/50 border-t">
                             ${groups[cat].map(m => `
                                 <div id="memo-${m.id}" class="p-3 border rounded-xl bg-white/80 shadow-sm">
-                                    <h4 class="font-bold text-sm text-blue-900">${m.title}</h4>
-                                    <p class="text-xs my-2 text-gray-700 whitespace-pre-wrap">${m.content}</p>
-                                    ${m.photoBlob ? `
-                                        <button onclick="this.nextElementSibling.classList.toggle('hidden'); this.innerText=this.innerText.includes('檢視')?'收起相片':'🖼️ 檢視相片'" class="text-blue-500 text-[10px] font-bold mb-2 bg-blue-50 px-3 py-1 rounded-full">🖼️ 檢視相片</button>
-                                        <div class="hidden"><img src="${URL.createObjectURL(m.photoBlob)}" onclick="openFullImg(this.src)" class="rounded-lg w-full mb-2"></div>
-                                    ` : ''}
+                                    <h4 class="font-bold text-sm text-blue-900">${m.title}</h4><p class="text-xs my-2 text-gray-700 whitespace-pre-wrap">${m.content}</p>
+                                    ${m.photoBlob ? `<button onclick="this.nextElementSibling.classList.toggle('hidden'); this.innerText=this.innerText.includes('檢視')?'收起相片':'🖼️ 檢視相片'" class="text-blue-500 text-[10px] font-bold mb-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">🖼️ 檢視相片</button><div class="hidden"><img src="${URL.createObjectURL(m.photoBlob)}" onclick="openFullImg(this.src)" class="rounded-lg w-full mb-2 shadow-sm"></div>` : ''}
                                     <div class="flex justify-between items-center text-[8px] text-gray-400"><span>${new Date(m.date).toLocaleString()}</span><div class="flex gap-3"><button onclick="editMemo(${m.id})" class="text-blue-500 font-bold">✎ 編輯</button><button onclick="deleteMemo(${m.id})" class="text-red-400">✕ 刪除</button></div></div>
                                 </div>`).join('')}
                         </div>
@@ -207,48 +247,6 @@
             };
         }
 
-        // --- 修復日曆跳轉月份 Bug ---
-        function navigateCalendar(s) {
-            if(isCalCollapsed) {
-                let d = new Date(selectedDateStr.replace(/-/g, '/'));
-                d.setDate(d.getDate() + s * 7);
-                selectedDateStr = formatDate(d);
-                viewDate = new Date(selectedDateStr.replace(/-/g, '/'));
-            } else {
-                // 修復核心：先將日期設為 1 號，避免 30/31 號跳轉時自動跳進再下個月
-                viewDate.setDate(1); 
-                viewDate.setMonth(viewDate.setMonth(viewDate.getMonth() + s));
-            }
-            renderCalendar(); renderDailyTasks();
-        }
-
-        // --- 其他全功能回歸 (基礎邏輯) ---
-        function renderCalendar() {
-            const grid = document.getElementById('calendarGrid'); grid.innerHTML = '';
-            const m = isCalCollapsed ? new Date(selectedDateStr.replace(/-/g, '/')).getMonth() : viewDate.getMonth(), y = isCalCollapsed ? new Date(selectedDateStr.replace(/-/g, '/')).getFullYear() : viewDate.getFullYear();
-            document.getElementById('calendarTitle').innerText = `${y}年 ${m + 1}月`;
-            if (isCalCollapsed) {
-                const current = new Date(selectedDateStr.replace(/-/g, '/')); const sun = new Date(current); sun.setDate(current.getDate() - current.getDay());
-                for (let i = 0; i < 7; i++) { const d = new Date(sun); d.setDate(sun.getDate() + i); renderDayCell(grid, d); }
-            } else {
-                const f = new Date(y, m, 1).getDay(), t = new Date(y, m + 1, 0).getDate();
-                for (let i = 0; i < f; i++) grid.innerHTML += '<div></div>';
-                for (let d = 1; d <= t; d++) renderDayCell(grid, new Date(y, m, d));
-            }
-        }
-        function renderDayCell(c, d) {
-            const ds = formatDate(d), h = HK_HOLIDAYS_2026[ds], s = schedule[ds]?.shiftId ? shifts[schedule[ds].shiftId] : null;
-            const div = document.createElement('div'); div.className = `day-cell ${ds === selectedDateStr ? 'selected' : ''}`;
-            div.onclick = () => { selectedDateStr = ds; renderCalendar(); renderDailyTasks(); };
-            div.innerHTML = `${h ? `<span class="holiday-name">${h}</span>` : ''}<span class="text-xs font-bold ${d.getDay()===0||h?'text-sunday':''}">${d.getDate()}</span>${s?`<div class="shift-tag" style="background:${s.color}20;color:${s.color}">${s.name}</div>`:''}`;
-            c.appendChild(div);
-        }
-        function createNewShift() { const id = 'S' + Date.now(); shifts[id] = { name: "新更份", color: "#333333", tasks: [] }; saveShifts(); renderShiftEditor(); renderShiftButtons(); }
-        function saveShifts() { localStorage.setItem('v16_shifts', JSON.stringify(shifts)); }
-        function renderShiftEditor() {
-            const container = document.getElementById('shiftManagerList');
-            container.innerHTML = Object.keys(shifts).map(id => `<div class="ios-card p-4 border-l-8" style="border-color:${shifts[id].color}"><div class="flex gap-2 mb-2"><input type="text" value="${shifts[id].name}" onchange="shifts['${id}'].name=this.value;saveShifts()" class="font-bold flex-1 border-b outline-none text-sm"><input type="color" value="${shifts[id].color}" onchange="shifts['${id}'].color=this.value;saveShifts()" class="w-8 h-8"><button onclick="if(confirm('刪除？')){delete shifts['${id}'];saveShifts();renderShiftEditor();renderShiftButtons()}" class="text-red-500 font-bold">✕</button></div><div class="space-y-2 mb-3">${shifts[id].tasks.map((t, ti) => `<div class="flex gap-1 p-1 bg-gray-50 rounded"><input type="time" value="${t.time}" onchange="shifts['${id}'].tasks[${ti}].time=this.value;saveShifts()" class="text-[10px] border rounded p-1"><input type="text" value="${t.desc}" onchange="shifts['${id}'].tasks[${ti}].desc=this.value;saveShifts()" class="text-[10px] border rounded p-1 flex-1"><button onclick="shifts['${id}'].tasks.splice(${ti},1);saveShifts();renderShiftEditor()" class="text-gray-400">✕</button></div>`).join('')}</div><button onclick="shifts['${id}'].tasks.push({time:'08:00',desc:'新項目'});saveShifts();renderShiftEditor()" class="text-[10px] text-blue-500 font-bold">+ 增加子項目</button></div>`).join('');
-        }
         function handleAddAction() {
             const time = document.getElementById('manualTime').value, desc = document.getElementById('manualDesc').value; if(!desc) return;
             if(!schedule[selectedDateStr]) schedule[selectedDateStr] = { shiftId: null, customTasks: [] };
@@ -256,14 +254,14 @@
             if(!time) { localStorage.setItem('pendingReminder', desc); document.getElementById('popupMsg').innerText = desc; document.getElementById('popupModal').classList.remove('hidden'); }
             renderDailyTasks(); document.getElementById('manualDesc').value = '';
         }
+
         function renderDailyTasks() {
             const c = document.getElementById('dailyTaskList'); const d = schedule[selectedDateStr] || { shiftId: null, customTasks: [] };
             let ts = (d.shiftId && shifts[d.shiftId]) ? shifts[d.shiftId].tasks.map(t => ({...t, isTemp: true})) : [];
             ts = [...ts, ...d.customTasks].sort((a,b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
             c.innerHTML = ts.length ? ts.map((t, i) => `<div class="ios-card p-4 flex flex-col ${!t.isTemp ? 'emergency-item' : ''}"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="font-mono font-bold text-lg">${t.time || '--:--'}</span><span class="font-medium text-gray-800">${t.desc}</span></div><button onclick="deleteTask(${i}, ${t.isTemp})" class="text-gray-300">✕</button></div></div>`).join('') : '<p class="text-center text-gray-400 py-10 text-xs">今日無事項</p>';
         }
-        function deleteTask(i, t) { if(!confirm("刪除？")) return; if(t) alert("範本內容請在設定頁修改。"); else { schedule[selectedDateStr].customTasks.splice(i-(schedule[selectedDateStr].shiftId?shifts[schedule[selectedDateStr].shiftId].tasks.length:0),1); localStorage.setItem('v16_schedule',JSON.stringify(schedule)); renderDailyTasks(); } }
-        
+
         // 同步工具 (V24 基礎)
         async function oneClickBackup() { if(!accessToken) return alert("請先連結 Google"); showProgress("打包原始圖...", 10); const all = await new Promise(r => db.transaction("memos").objectStore("memos").getAll().onsuccess = e => r(e.target.result)); for(let i=0; i<all.length; i++) { if(all[i].photoBlob && !all[i].googleDriveFileId) { showProgress(`上傳照片 ${i+1}/${all.length}`, 20 + (i/all.length*60)); all[i].googleDriveFileId = await uploadRawFile(all[i].photoBlob); const tx = db.transaction("memos", "readwrite"); tx.objectStore("memos").put(all[i]); } } showProgress("上傳存檔...", 90); await uploadBackupJson({ shifts, schedule, memos: all.map(m => ({...m, photoBlob: null})) }); showProgress("完成！", 100); setTimeout(() => { document.getElementById('progressContainer').style.display='none'; alert("雲端備份成功！"); }, 1000); }
         async function oneClickRestore() { if(!accessToken) return alert("請先連結 Google"); showProgress("獲取存檔...", 20); const cloud = await downloadBackupJson(); if(!cloud) return alert("無雲端存檔！"); if(!confirm("確定還原？")) return; shifts = cloud.shifts; schedule = cloud.schedule; localStorage.setItem('v16_shifts', JSON.stringify(shifts)); localStorage.setItem('v16_schedule', JSON.stringify(schedule)); for(let i=0; i<cloud.memos.length; i++) { showProgress(`載入原始圖 ${i+1}/${cloud.memos.length}`, 30 + (i/cloud.memos.length*60)); const tx = db.transaction("memos", "readwrite"); const exist = await new Promise(r => tx.objectStore("memos").get(cloud.memos[i].id).onsuccess = e => r(e.target.result)); if(!exist) { if(cloud.memos[i].googleDriveFileId) cloud.memos[i].photoBlob = await downloadRawFile(cloud.memos[i].googleDriveFileId); tx.objectStore("memos").add(cloud.memos[i]); } } showProgress("完畢！", 100); setTimeout(() => location.reload(), 1000); }
@@ -271,7 +269,7 @@
         async function downloadRawFile(id) { const r=await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`,{headers:{'Authorization':`Bearer ${accessToken}`}}); return await r.blob(); }
         async function uploadBackupJson(d) { const f=new FormData(); f.append('metadata',new Blob([JSON.stringify({name:'V24_MASTER_SAVE.json'})],{type:'application/json'})); f.append('file',new Blob([JSON.stringify(d)],{type:'application/json'})); const s=await fetch(`https://www.googleapis.com/drive/v3/files?q=name='V24_MASTER_SAVE.json'`,{headers:{'Authorization':`Bearer ${accessToken}`}}); const l=await s.json(); let u='https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',m='POST'; if(l.files.length>0){ u=`https://www.googleapis.com/upload/drive/v3/files/${l.files[0].id}?uploadType=multipart`; m='PATCH'; } await fetch(u,{method:m,headers:{'Authorization':`Bearer ${accessToken}`},body:f}); }
         async function downloadBackupJson() { const s=await fetch(`https://www.googleapis.com/drive/v3/files?q=name='V24_MASTER_SAVE.json'`,{headers:{'Authorization':`Bearer ${accessToken}`}}); const l=await s.json(); if(l.files.length>0){ const f=await fetch(`https://www.googleapis.com/drive/v3/files/${l.files[0].id}?alt=media`,{headers:{'Authorization':`Bearer ${accessToken}`}}); return await f.json(); } return null; }
-        function saveMemoLocal() { const id = document.getElementById('editingMemoId').value; const cat = document.getElementById('memoCatSelect').value === 'NEW' ? document.getElementById('memoCatNew').value : document.getElementById('memoCatSelect').value; const file = document.getElementById('memoPhotoInput').files[0]; const data = { title: document.getElementById('memoTitleInput').value, content: document.getElementById('memoContentInput').value, cat: cat || "一般", date: Date.now(), photoBlob: file || null }; const tx = db.transaction("memos", "readwrite"); if(id) { data.id = parseInt(id); tx.objectStore("memos").put(data); } else { tx.objectStore("memos").add(data); } tx.oncomplete = () => location.reload(); }
+        function saveMemoLocal() { const id = document.getElementById('editingMemoId').value, title = document.getElementById('memoTitleInput').value, content = document.getElementById('memoContentInput').value, cat = document.getElementById('memoCatSelect').value === 'NEW' ? document.getElementById('memoCatNew').value : document.getElementById('memoCatSelect').value, file = document.getElementById('memoPhotoInput').files[0]; const data = { title, content, cat: cat || "一般", date: Date.now(), photoBlob: file || null }; const tx = db.transaction("memos", "readwrite"); if(id) { data.id = parseInt(id); tx.objectStore("memos").put(data); } else { tx.objectStore("memos").add(data); } tx.oncomplete = () => location.reload(); }
         function setCatColor(cat, color) { catColors[cat] = color; localStorage.setItem('v21_cat_colors', JSON.stringify(catColors)); renderMemos(); }
         function editMemo(id) { db.transaction("memos", "readonly").objectStore("memos").get(id).onsuccess=e=>{ const m=e.target.result; document.getElementById('editingMemoId').value=m.id; document.getElementById('memoTitleInput').value=m.title; document.getElementById('memoContentInput').value=m.content; document.getElementById('memoInputSection').classList.remove('hidden'); document.getElementById('cancelEditBtn').classList.remove('hidden'); window.scrollTo({top:0,behavior:'smooth'}); }; }
         function cancelEdit() { document.getElementById('editingMemoId').value=""; document.getElementById('memoTitleInput').value=""; document.getElementById('memoContentInput').value=""; document.getElementById('memoInputSection').classList.add('hidden'); document.getElementById('cancelEditBtn').classList.add('hidden'); }
@@ -284,11 +282,15 @@
         function toggleMemoInput() { document.getElementById('memoInputSection').classList.toggle('hidden'); }
         function toggleNewCatInput() { document.getElementById('memoCatNew').classList.toggle('hidden',document.getElementById('memoCatSelect').value!=='NEW'); }
         function updateCatDropdown() { if(!db) return; db.transaction("memos","readonly").objectStore("memos").getAll().onsuccess=e=>{ const cats=[...new Set(e.target.result.map(m=>m.cat))]; document.getElementById('memoCatSelect').innerHTML='<option value="">選擇分類...</option><option value="NEW">+ 新分類</option>'+cats.map(c=>`<option value="${c}">${c}</option>`).join(''); }; }
+        function deleteTask(i, t) { if(!confirm("刪除？")) return; if(t) alert("範本內容請在設定頁修改。"); else { schedule[selectedDateStr].customTasks.splice(i-(schedule[selectedDateStr].shiftId?shifts[schedule[selectedDateStr].shiftId].tasks.length:0),1); localStorage.setItem('v16_schedule',JSON.stringify(schedule)); renderDailyTasks(); } }
         function deleteMemo(id) { if(confirm("確定刪除？")) db.transaction("memos","readwrite").objectStore("memos").delete(id).onsuccess=()=>location.reload(); }
         function openFullImg(s) { document.getElementById('modal-content').src=s; document.getElementById('img-modal').style.display='block'; }
         function closeImgModal() { document.getElementById('img-modal').style.display='none'; }
         function toggleCalendar() { isCalCollapsed=!isCalCollapsed; localStorage.setItem('v16_cal_collapsed',isCalCollapsed); renderCalendar(); }
         function renderShiftButtons() { const c=document.getElementById('shiftButtons'); c.innerHTML=Object.keys(shifts).map(id=>`<button onclick="applyShift('${id}')" class="bg-white px-4 py-3 rounded-xl font-bold border" style="color:${shifts[id].color}">${shifts[id].name}</button>`).join('')+`<button onclick="applyShift(null)" class="px-4 py-3 bg-gray-200 rounded-xl font-bold text-gray-500">清除</button>`; }
+        function applyShift(id) { if(!schedule[selectedDateStr]) schedule[selectedDateStr]={shiftId:null,customTasks:[]}; schedule[selectedDateStr].shiftId=id; localStorage.setItem('v16_schedule',JSON.stringify(schedule)); let n=parseDate(selectedDateStr); n.setDate(n.getDate()+1); selectedDateStr=formatDate(n); renderCalendar(); renderDailyTasks(); }
+        function openMemo(id) { togglePage('memoPage'); setTimeout(() => { const el = document.getElementById(`memo-${id}`); if(el) { el.scrollIntoView({behavior:'smooth'}); el.parentElement.classList.remove('hidden'); } }, 500); }
+        function createNewShift() { const id = 'S' + Date.now(); shifts[id] = { name: "新更份", color: "#333333", tasks: [] }; saveShifts(); renderShiftEditor(); renderShiftButtons(); }
         function dismissPopup() { document.getElementById('topBanner').className="active bg-white shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200"; document.getElementById('popupModal').classList.add('hidden'); }
         function closeBanner() { localStorage.removeItem('pendingReminder'); document.getElementById('topBanner').className="inactive bg-white shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200"; }
         window.onload = init;
