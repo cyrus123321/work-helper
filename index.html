@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>工作助手 V25.1</title>
+    <title>工作助手 V26.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
@@ -27,13 +27,14 @@
         #progressContainer { display: none; position: fixed; bottom: 80px; left: 20px; right: 20px; z-index: 400; background: white; padding: 15px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
         #progressBar { height: 8px; background: #e5e5ea; border-radius: 4px; overflow: hidden; margin-top: 8px; }
         #progressFill { height: 100%; background: #007aff; width: 0%; transition: width 0.3s; }
+        .weather-badge { background: #f8f9fa; border: 1px solid #eee; padding: 4px 8px; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: bold; }
     </style>
 </head>
 <body class="pb-24">
 
     <div id="img-modal" onclick="closeImgModal()"><div class="w-full h-full flex items-center justify-center"><img id="modal-content" src=""></div></div>
 
-    <div id="topBanner" class="inactive bg-white/95 backdrop-blur shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200">
+    <div id="topBanner" class="inactive bg-white shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200">
         <div class="flex items-center"><span class="text-xl mr-3">🔔</span><p id="bannerText" class="text-sm font-bold text-red-600"></p></div>
         <button onclick="closeBanner()" class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs font-bold">已完成</button>
     </div>
@@ -43,12 +44,21 @@
     <div class="global-status">
         <div class="flex justify-between items-center">
             <div id="syncStatusGlobal" class="text-[11px] font-bold flex items-center gap-1 text-gray-400"><span id="syncDot" class="w-2 h-2 rounded-full bg-gray-300"></span> 離線作業 (手遊模式)</div>
-            <div class="text-[10px] text-gray-300 font-mono">v25.1 RAW</div>
+            <div class="text-[10px] text-gray-300 font-mono">v26.0 RAW</div>
         </div>
     </div>
 
     <div id="mainPage" class="max-w-md mx-auto p-4 pt-2">
-        <header class="text-center py-4"><div id="clock" class="text-6xl font-mono font-black text-gray-900 tracking-tighter">00:00:00</div><div id="fullDate" class="text-gray-500 font-bold mt-1 text-xs"></div></header>
+        <header class="text-center py-4">
+            <div id="clock" class="text-6xl font-mono font-black text-gray-900 tracking-tighter">00:00:00</div>
+            <div id="fullDate" class="text-gray-500 font-bold mt-1 text-xs mb-3"></div>
+            
+            <div id="weatherInfo" class="flex justify-center gap-2 flex-wrap">
+                <div class="weather-badge">樂富: <span id="tempLF">--</span>°C | <span id="rhLF">--</span>%</div>
+                <div class="weather-badge">葵芳: <span id="tempKF">--</span>°C | <span id="rhKF">--</span>%</div>
+                <div class="weather-badge text-blue-600">降雨: <span id="rainProb">--</span></div>
+            </div>
+        </header>
 
         <section class="ios-card p-2 mb-4">
             <div class="flex justify-between items-center px-2 mb-2">
@@ -77,23 +87,13 @@
             <h1 class="text-3xl font-black">備忘錄</h1>
             <button onclick="toggleMemoInput()" class="bg-blue-600 text-white px-4 py-2 rounded-full text-xs font-bold shadow-lg">+ 新增</button>
         </div>
-
-        <div class="mb-4">
-            <input type="text" id="memoSearchInput" oninput="renderMemos()" placeholder="🔍 搜尋標題、內容或分類..." class="ios-card w-full p-3 text-sm outline-none border-none">
-        </div>
-
+        <div class="mb-4"><input type="text" id="memoSearchInput" oninput="renderMemos()" placeholder="🔍 搜尋標題、內容或分類..." class="ios-card w-full p-3 text-sm outline-none border-none"></div>
         <div id="memoInputSection" class="ios-card p-4 mb-6 space-y-3 hidden bg-blue-50/30">
             <input type="hidden" id="editingMemoId" value="">
-            <div class="flex gap-2">
-                <select id="memoCatSelect" onchange="toggleNewCatInput()" class="bg-white border p-3 rounded-xl flex-1 text-sm outline-none"></select>
-                <input id="memoCatNew" type="text" placeholder="新分類" class="bg-white border p-3 rounded-xl flex-1 hidden text-sm outline-none">
-            </div>
+            <div class="flex gap-2"><select id="memoCatSelect" onchange="toggleNewCatInput()" class="bg-white border p-3 rounded-xl flex-1 text-sm outline-none"></select><input id="memoCatNew" type="text" placeholder="新分類" class="bg-white border p-3 rounded-xl flex-1 hidden text-sm outline-none"></div>
             <input id="memoTitleInput" type="text" placeholder="標題" class="bg-white border p-3 rounded-xl w-full text-sm font-bold outline-none">
             <textarea id="memoContentInput" placeholder="內容..." class="bg-white border p-3 rounded-xl w-full h-24 text-sm outline-none"></textarea>
-            <div class="flex justify-between items-center">
-                <label class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-[10px] font-bold cursor-pointer">📷 照片 (原始圖)<input type="file" id="memoPhotoInput" accept="image/*" class="hidden"></label>
-                <button onclick="cancelEdit()" id="cancelEditBtn" class="hidden text-red-500 text-xs font-bold">取消編輯</button>
-            </div>
+            <div class="flex justify-between items-center"><label class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-[10px] font-bold cursor-pointer">📷 照片 (原始圖)<input type="file" id="memoPhotoInput" accept="image/*" class="hidden"></label><button onclick="cancelEdit()" id="cancelEditBtn" class="hidden text-red-500 text-xs font-bold">取消編輯</button></div>
             <button onclick="saveMemoLocal()" id="saveMemoBtn" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg">儲存到手機</button>
         </div>
         <div id="memoList" class="space-y-3"></div>
@@ -104,22 +104,12 @@
         <div class="ios-card p-4 mb-6 space-y-4 border-t-4 border-blue-500">
             <h2 class="font-bold text-sm">🎮 雲端存檔中心</h2>
             <button onclick="handleAuthClick()" class="w-full bg-white border py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2"><img src="https://www.google.com/favicon.ico" class="w-4 h-4"> 連結 Google</button>
-            <div class="grid grid-cols-1 gap-3">
-                <button onclick="oneClickBackup()" class="bg-green-600 text-white py-4 rounded-xl font-black shadow-lg">📤 一鍵雲端備份</button>
-                <button onclick="oneClickRestore()" class="bg-orange-500 text-white py-4 rounded-xl font-black shadow-lg">📥 一鍵雲端還原</button>
-            </div>
+            <div class="grid grid-cols-1 gap-3"><button onclick="oneClickBackup()" class="bg-green-600 text-white py-4 rounded-xl font-black shadow-lg">📤 一鍵雲端備份</button><button onclick="oneClickRestore()" class="bg-orange-500 text-white py-4 rounded-xl font-black shadow-lg">📥 一鍵雲端還原</button></div>
             <button onclick="handleSignoutClick()" id="signoutBtn" class="hidden w-full text-gray-400 text-xs py-2 text-center">登出帳號</button>
         </div>
         <div id="shiftManagerList" class="space-y-4"></div>
         <button onclick="createNewShift()" class="w-full mt-6 border-2 border-dashed border-gray-400 py-4 rounded-xl text-gray-500 font-bold">+ 增加更份</button>
         <button onclick="location.reload()" class="w-full bg-gray-200 py-4 rounded-xl text-gray-600 font-bold text-xs mt-10">🔄 重啟 App</button>
-    </div>
-
-    <div id="popupModal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-[300] hidden flex items-center justify-center p-6 text-center">
-        <div class="bg-white rounded-[25px] p-6 w-full max-w-xs shadow-2xl">
-            <div class="text-4xl mb-3">⚠️</div><h3 class="text-lg font-bold mb-4" id="popupMsg"></h3>
-            <button onclick="dismissPopup()" class="w-full py-3 bg-blue-600 text-white rounded-xl font-bold">知道了</button>
-        </div>
     </div>
 
     <nav class="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur border-t flex justify-around py-3 z-50">
@@ -138,7 +128,6 @@
         const HK_HOLIDAYS_2026 = { "2026-01-01": "元旦", "2026-02-17": "年初一", "2026-02-18": "年初二", "2026-02-19": "年初三", "2026-04-03": "受難節", "2026-04-04": "清明節", "2026-04-06": "復活節", "2026-04-07": "復活補假", "2026-05-01": "勞動節", "2026-05-25": "佛誕補假", "2026-06-19": "端午節", "2026-07-01": "回歸日", "2026-10-01": "國慶日", "2026-10-02": "中秋翌日", "2026-10-19": "重陽節", "2026-12-25": "聖誕節", "2026-12-26": "聖誕翌日" };
 
         const request = indexedDB.open("WorkHelperDB_V24", 1);
-        request.onupgradeneeded = e => { e.target.result.createObjectStore("memos", { keyPath: "id", autoIncrement: true }); };
         request.onsuccess = e => { db = e.target.result; init(); };
 
         let shifts = JSON.parse(localStorage.getItem('v16_shifts')) || { "D": { name: "D更", color: "#3b82f6", tasks: [] } };
@@ -150,16 +139,12 @@
             updateClock(); setInterval(updateClock, 1000);
             renderCalendar(); renderShiftButtons(); renderDailyTasks();
             renderMemos(); updateCatDropdown(); initGoogleAuth();
+            fetchWeather(); setInterval(fetchWeather, 600000); // 10分鐘更新一次天氣
             if(accessToken) updateLoginStatusUI(true);
-            if(localStorage.getItem('pendingReminder')) showBanner(localStorage.getItem('pendingReminder'));
         }
 
-        // --- 修復日期格式：不使用 ISO，避免時區偏移 ---
         function formatDate(d) {
-            const year = d.getFullYear();
-            const month = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         }
 
         function updateClock() {
@@ -168,45 +153,31 @@
             document.getElementById('fullDate').innerText = now.toLocaleDateString('zh-HK', {year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'});
         }
 
-        // --- 功能回歸：更份與事項 ---
-        function createNewShift() { const id = 'S' + Date.now(); shifts[id] = { name: "新更份", color: "#333333", tasks: [] }; saveShifts(); renderShiftEditor(); renderShiftButtons(); }
-        function saveShifts() { localStorage.setItem('v16_shifts', JSON.stringify(shifts)); }
-        function renderShiftEditor() {
-            const container = document.getElementById('shiftManagerList');
-            container.innerHTML = Object.keys(shifts).map(id => `
-                <div class="ios-card p-4 border-l-8" style="border-color:${shifts[id].color}">
-                    <div class="flex gap-2 mb-2"><input type="text" value="${shifts[id].name}" onchange="shifts['${id}'].name=this.value;saveShifts()" class="font-bold flex-1 border-b outline-none text-sm"><input type="color" value="${shifts[id].color}" onchange="shifts['${id}'].color=this.value;saveShifts()" class="w-8 h-8"><button onclick="if(confirm('刪除？')){delete shifts['${id}'];saveShifts();renderShiftEditor();renderShiftButtons()}" class="text-red-500 font-bold">✕</button></div>
-                    <div class="space-y-2 mb-3">${shifts[id].tasks.map((t, ti) => `<div class="flex gap-1 p-1 bg-gray-50 rounded"><input type="time" value="${t.time}" onchange="shifts['${id}'].tasks[${ti}].time=this.value;saveShifts()" class="text-[10px] border rounded p-1"><input type="text" value="${t.desc}" onchange="shifts['${id}'].tasks[${ti}].desc=this.value;saveShifts()" class="text-[10px] border rounded p-1 flex-1"><button onclick="shifts['${id}'].tasks.splice(${ti},1);saveShifts();renderShiftEditor()" class="text-gray-400">✕</button></div>`).join('')}</div>
-                    <button onclick="shifts['${id}'].tasks.push({time:'08:00',desc:'新項目'});saveShifts();renderShiftEditor()" class="text-[10px] text-blue-500 font-bold">+ 增加子項目</button>
-                </div>`).join('');
+        // --- 天文台 API 數據抓取 ---
+        async function fetchWeather() {
+            try {
+                // 抓取實時氣溫濕度
+                const rhrResponse = await fetch('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=tc');
+                const rhrData = await rhrResponse.json();
+                
+                // 樂富取黃大仙站(九龍城/黃大仙區), 葵芳取葵涌站
+                const lfTemp = rhrData.temperature.data.find(i => i.place === '黃大仙')?.value || "--";
+                const kfTemp = rhrData.temperature.data.find(i => i.place === '葵涌')?.value || "--";
+                const rh = rhrData.humidity.data[0]?.value || "--";
+
+                document.getElementById('tempLF').innerText = lfTemp;
+                document.getElementById('rhLF').innerText = rh;
+                document.getElementById('tempKF').innerText = kfTemp;
+                document.getElementById('rhKF').innerText = rh;
+
+                // 抓取九天天氣預報中的降雨概率
+                const fndResponse = await fetch('https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=fnd&lang=tc');
+                const fndData = await fndResponse.json();
+                document.getElementById('rainProb').innerText = fndData.weatherForecast[0]?.psr || "未知";
+            } catch(e) { console.error("天氣加載失敗", e); }
         }
 
-        function handleAddAction() {
-            const time = document.getElementById('manualTime').value;
-            const desc = document.getElementById('manualDesc').value;
-            if(!desc) return;
-            if(!schedule[selectedDateStr]) schedule[selectedDateStr] = { shiftId: null, customTasks: [] };
-            schedule[selectedDateStr].customTasks.push({ time, desc });
-            localStorage.setItem('v16_schedule', JSON.stringify(schedule));
-            if(!time) { localStorage.setItem('pendingReminder', desc); document.getElementById('popupMsg').innerText = desc; document.getElementById('popupModal').classList.remove('hidden'); }
-            renderDailyTasks(); document.getElementById('manualDesc').value = '';
-        }
-
-        function renderDailyTasks() {
-            const c = document.getElementById('dailyTaskList');
-            const d = schedule[selectedDateStr] || { shiftId: null, customTasks: [] };
-            let ts = (d.shiftId && shifts[d.shiftId]) ? shifts[d.shiftId].tasks.map(t => ({...t, isTemp: true})) : [];
-            ts = [...ts, ...d.customTasks].sort((a,b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
-            c.innerHTML = ts.length ? ts.map((t, i) => `
-                <div class="ios-card p-4 flex flex-col ${!t.isTemp ? 'emergency-item' : ''}">
-                    <div class="flex justify-between items-center">
-                        <div class="flex items-center gap-3"><span class="font-mono font-bold text-lg">${t.time || '--:--'}</span><span class="font-medium text-gray-800">${t.desc}</span></div>
-                        <button onclick="deleteTask(${i}, ${t.isTemp})" class="text-gray-300">✕</button>
-                    </div>
-                </div>`).join('') : '<p class="text-center text-gray-400 py-10 text-xs">今日無事項</p>';
-        }
-
-        // --- 備忘錄與搜尋 ---
+        // --- 備忘錄與相片收納邏輯 ---
         function renderMemos() {
             if(!db) return;
             const q = document.getElementById('memoSearchInput')?.value.toLowerCase() || "";
@@ -220,12 +191,15 @@
                         <div onclick="this.nextElementSibling.classList.toggle('hidden')" class="p-4 flex justify-between items-center font-bold">
                             <div class="flex items-center gap-2"><span>${cat}</span><div class="relative bg-white/50 px-2 py-1 rounded text-[9px] text-blue-600 border" onclick="event.stopPropagation()">🎨 改色<input type="color" value="${bg}" onchange="setCatColor('${cat}', this.value)" class="absolute inset-0 opacity-0"></div></div><span class="text-black/30 text-xs">▼</span>
                         </div>
-                        <div class="p-2 space-y-3 bg-white/50 border-t">
+                        <div class="hidden p-2 space-y-3 bg-white/50 border-t">
                             ${groups[cat].map(m => `
                                 <div id="memo-${m.id}" class="p-3 border rounded-xl bg-white/80 shadow-sm">
                                     <h4 class="font-bold text-sm text-blue-900">${m.title}</h4>
                                     <p class="text-xs my-2 text-gray-700 whitespace-pre-wrap">${m.content}</p>
-                                    ${m.photoBlob ? `<img src="${URL.createObjectURL(m.photoBlob)}" onclick="openFullImg(this.src)" class="rounded-lg w-full mb-2">` : ''}
+                                    ${m.photoBlob ? `
+                                        <button onclick="this.nextElementSibling.classList.toggle('hidden'); this.innerText=this.innerText.includes('檢視')?'收起相片':'🖼️ 檢視相片'" class="text-blue-500 text-[10px] font-bold mb-2 bg-blue-50 px-3 py-1 rounded-full">🖼️ 檢視相片</button>
+                                        <div class="hidden"><img src="${URL.createObjectURL(m.photoBlob)}" onclick="openFullImg(this.src)" class="rounded-lg w-full mb-2"></div>
+                                    ` : ''}
                                     <div class="flex justify-between items-center text-[8px] text-gray-400"><span>${new Date(m.date).toLocaleString()}</span><div class="flex gap-3"><button onclick="editMemo(${m.id})" class="text-blue-500 font-bold">✎ 編輯</button><button onclick="deleteMemo(${m.id})" class="text-red-400">✕ 刪除</button></div></div>
                                 </div>`).join('')}
                         </div>
@@ -233,15 +207,28 @@
             };
         }
 
-        // --- 基礎框架與日曆 ---
+        // --- 修復日曆跳轉月份 Bug ---
+        function navigateCalendar(s) {
+            if(isCalCollapsed) {
+                let d = new Date(selectedDateStr.replace(/-/g, '/'));
+                d.setDate(d.getDate() + s * 7);
+                selectedDateStr = formatDate(d);
+                viewDate = new Date(selectedDateStr.replace(/-/g, '/'));
+            } else {
+                // 修復核心：先將日期設為 1 號，避免 30/31 號跳轉時自動跳進再下個月
+                viewDate.setDate(1); 
+                viewDate.setMonth(viewDate.setMonth(viewDate.getMonth() + s));
+            }
+            renderCalendar(); renderDailyTasks();
+        }
+
+        // --- 其他全功能回歸 (基礎邏輯) ---
         function renderCalendar() {
             const grid = document.getElementById('calendarGrid'); grid.innerHTML = '';
-            const m = isCalCollapsed ? new Date(selectedDateStr.replace(/-/g, '/')).getMonth() : viewDate.getMonth();
-            const y = isCalCollapsed ? new Date(selectedDateStr.replace(/-/g, '/')).getFullYear() : viewDate.getFullYear();
+            const m = isCalCollapsed ? new Date(selectedDateStr.replace(/-/g, '/')).getMonth() : viewDate.getMonth(), y = isCalCollapsed ? new Date(selectedDateStr.replace(/-/g, '/')).getFullYear() : viewDate.getFullYear();
             document.getElementById('calendarTitle').innerText = `${y}年 ${m + 1}月`;
             if (isCalCollapsed) {
-                const current = new Date(selectedDateStr.replace(/-/g, '/'));
-                const sun = new Date(current); sun.setDate(current.getDate() - current.getDay());
+                const current = new Date(selectedDateStr.replace(/-/g, '/')); const sun = new Date(current); sun.setDate(current.getDate() - current.getDay());
                 for (let i = 0; i < 7; i++) { const d = new Date(sun); d.setDate(sun.getDate() + i); renderDayCell(grid, d); }
             } else {
                 const f = new Date(y, m, 1).getDay(), t = new Date(y, m + 1, 0).getDate();
@@ -256,13 +243,28 @@
             div.innerHTML = `${h ? `<span class="holiday-name">${h}</span>` : ''}<span class="text-xs font-bold ${d.getDay()===0||h?'text-sunday':''}">${d.getDate()}</span>${s?`<div class="shift-tag" style="background:${s.color}20;color:${s.color}">${s.name}</div>`:''}`;
             c.appendChild(div);
         }
-        function navigateCalendar(s) {
-            if(isCalCollapsed) { let d=new Date(selectedDateStr.replace(/-/g, '/')); d.setDate(d.getDate()+s*7); selectedDateStr=formatDate(d); viewDate=new Date(selectedDateStr.replace(/-/g, '/')); }
-            else { viewDate.setMonth(viewDate.getMonth()+s); }
-            renderCalendar(); renderDailyTasks();
+        function createNewShift() { const id = 'S' + Date.now(); shifts[id] = { name: "新更份", color: "#333333", tasks: [] }; saveShifts(); renderShiftEditor(); renderShiftButtons(); }
+        function saveShifts() { localStorage.setItem('v16_shifts', JSON.stringify(shifts)); }
+        function renderShiftEditor() {
+            const container = document.getElementById('shiftManagerList');
+            container.innerHTML = Object.keys(shifts).map(id => `<div class="ios-card p-4 border-l-8" style="border-color:${shifts[id].color}"><div class="flex gap-2 mb-2"><input type="text" value="${shifts[id].name}" onchange="shifts['${id}'].name=this.value;saveShifts()" class="font-bold flex-1 border-b outline-none text-sm"><input type="color" value="${shifts[id].color}" onchange="shifts['${id}'].color=this.value;saveShifts()" class="w-8 h-8"><button onclick="if(confirm('刪除？')){delete shifts['${id}'];saveShifts();renderShiftEditor();renderShiftButtons()}" class="text-red-500 font-bold">✕</button></div><div class="space-y-2 mb-3">${shifts[id].tasks.map((t, ti) => `<div class="flex gap-1 p-1 bg-gray-50 rounded"><input type="time" value="${t.time}" onchange="shifts['${id}'].tasks[${ti}].time=this.value;saveShifts()" class="text-[10px] border rounded p-1"><input type="text" value="${t.desc}" onchange="shifts['${id}'].tasks[${ti}].desc=this.value;saveShifts()" class="text-[10px] border rounded p-1 flex-1"><button onclick="shifts['${id}'].tasks.splice(${ti},1);saveShifts();renderShiftEditor()" class="text-gray-400">✕</button></div>`).join('')}</div><button onclick="shifts['${id}'].tasks.push({time:'08:00',desc:'新項目'});saveShifts();renderShiftEditor()" class="text-[10px] text-blue-500 font-bold">+ 增加子項目</button></div>`).join('');
         }
-
-        // --- 同步與功能助手 ---
+        function handleAddAction() {
+            const time = document.getElementById('manualTime').value, desc = document.getElementById('manualDesc').value; if(!desc) return;
+            if(!schedule[selectedDateStr]) schedule[selectedDateStr] = { shiftId: null, customTasks: [] };
+            schedule[selectedDateStr].customTasks.push({ time, desc }); localStorage.setItem('v16_schedule', JSON.stringify(schedule));
+            if(!time) { localStorage.setItem('pendingReminder', desc); document.getElementById('popupMsg').innerText = desc; document.getElementById('popupModal').classList.remove('hidden'); }
+            renderDailyTasks(); document.getElementById('manualDesc').value = '';
+        }
+        function renderDailyTasks() {
+            const c = document.getElementById('dailyTaskList'); const d = schedule[selectedDateStr] || { shiftId: null, customTasks: [] };
+            let ts = (d.shiftId && shifts[d.shiftId]) ? shifts[d.shiftId].tasks.map(t => ({...t, isTemp: true})) : [];
+            ts = [...ts, ...d.customTasks].sort((a,b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
+            c.innerHTML = ts.length ? ts.map((t, i) => `<div class="ios-card p-4 flex flex-col ${!t.isTemp ? 'emergency-item' : ''}"><div class="flex justify-between items-center"><div class="flex items-center gap-3"><span class="font-mono font-bold text-lg">${t.time || '--:--'}</span><span class="font-medium text-gray-800">${t.desc}</span></div><button onclick="deleteTask(${i}, ${t.isTemp})" class="text-gray-300">✕</button></div></div>`).join('') : '<p class="text-center text-gray-400 py-10 text-xs">今日無事項</p>';
+        }
+        function deleteTask(i, t) { if(!confirm("刪除？")) return; if(t) alert("範本內容請在設定頁修改。"); else { schedule[selectedDateStr].customTasks.splice(i-(schedule[selectedDateStr].shiftId?shifts[schedule[selectedDateStr].shiftId].tasks.length:0),1); localStorage.setItem('v16_schedule',JSON.stringify(schedule)); renderDailyTasks(); } }
+        
+        // 同步工具 (V24 基礎)
         async function oneClickBackup() { if(!accessToken) return alert("請先連結 Google"); showProgress("打包原始圖...", 10); const all = await new Promise(r => db.transaction("memos").objectStore("memos").getAll().onsuccess = e => r(e.target.result)); for(let i=0; i<all.length; i++) { if(all[i].photoBlob && !all[i].googleDriveFileId) { showProgress(`上傳照片 ${i+1}/${all.length}`, 20 + (i/all.length*60)); all[i].googleDriveFileId = await uploadRawFile(all[i].photoBlob); const tx = db.transaction("memos", "readwrite"); tx.objectStore("memos").put(all[i]); } } showProgress("上傳存檔...", 90); await uploadBackupJson({ shifts, schedule, memos: all.map(m => ({...m, photoBlob: null})) }); showProgress("完成！", 100); setTimeout(() => { document.getElementById('progressContainer').style.display='none'; alert("雲端備份成功！"); }, 1000); }
         async function oneClickRestore() { if(!accessToken) return alert("請先連結 Google"); showProgress("獲取存檔...", 20); const cloud = await downloadBackupJson(); if(!cloud) return alert("無雲端存檔！"); if(!confirm("確定還原？")) return; shifts = cloud.shifts; schedule = cloud.schedule; localStorage.setItem('v16_shifts', JSON.stringify(shifts)); localStorage.setItem('v16_schedule', JSON.stringify(schedule)); for(let i=0; i<cloud.memos.length; i++) { showProgress(`載入原始圖 ${i+1}/${cloud.memos.length}`, 30 + (i/cloud.memos.length*60)); const tx = db.transaction("memos", "readwrite"); const exist = await new Promise(r => tx.objectStore("memos").get(cloud.memos[i].id).onsuccess = e => r(e.target.result)); if(!exist) { if(cloud.memos[i].googleDriveFileId) cloud.memos[i].photoBlob = await downloadRawFile(cloud.memos[i].googleDriveFileId); tx.objectStore("memos").add(cloud.memos[i]); } } showProgress("完畢！", 100); setTimeout(() => location.reload(), 1000); }
         async function uploadRawFile(b) { const f=new FormData(); f.append('metadata',new Blob([JSON.stringify({name:`RAW_${Date.now()}.jpg`})],{type:'application/json'})); f.append('file',b); const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{method:'POST',headers:{'Authorization':`Bearer ${accessToken}`},body:f}); return (await r.json()).id; }
@@ -271,27 +273,24 @@
         async function downloadBackupJson() { const s=await fetch(`https://www.googleapis.com/drive/v3/files?q=name='V24_MASTER_SAVE.json'`,{headers:{'Authorization':`Bearer ${accessToken}`}}); const l=await s.json(); if(l.files.length>0){ const f=await fetch(`https://www.googleapis.com/drive/v3/files/${l.files[0].id}?alt=media`,{headers:{'Authorization':`Bearer ${accessToken}`}}); return await f.json(); } return null; }
         function saveMemoLocal() { const id = document.getElementById('editingMemoId').value; const cat = document.getElementById('memoCatSelect').value === 'NEW' ? document.getElementById('memoCatNew').value : document.getElementById('memoCatSelect').value; const file = document.getElementById('memoPhotoInput').files[0]; const data = { title: document.getElementById('memoTitleInput').value, content: document.getElementById('memoContentInput').value, cat: cat || "一般", date: Date.now(), photoBlob: file || null }; const tx = db.transaction("memos", "readwrite"); if(id) { data.id = parseInt(id); tx.objectStore("memos").put(data); } else { tx.objectStore("memos").add(data); } tx.oncomplete = () => location.reload(); }
         function setCatColor(cat, color) { catColors[cat] = color; localStorage.setItem('v21_cat_colors', JSON.stringify(catColors)); renderMemos(); }
-        function applyShift(id) { if(!schedule[selectedDateStr]) schedule[selectedDateStr]={shiftId:null,customTasks:[]}; schedule[selectedDateStr].shiftId=id; localStorage.setItem('v16_schedule',JSON.stringify(schedule)); let n=new Date(selectedDateStr.replace(/-/g, '/')); n.setDate(n.getDate()+1); selectedDateStr=formatDate(n); renderCalendar(); renderDailyTasks(); }
-        function deleteTask(i, t) { if(!confirm("刪除？")) return; if(t) alert("範本內容請在設定頁修改。"); else { schedule[selectedDateStr].customTasks.splice(i-(schedule[selectedDateStr].shiftId?shifts[schedule[selectedDateStr].shiftId].tasks.length:0),1); localStorage.setItem('v16_schedule',JSON.stringify(schedule)); renderDailyTasks(); } }
-        function deleteMemo(id) { if(confirm("確定刪除？")) db.transaction("memos","readwrite").objectStore("memos").delete(id).onsuccess=()=>location.reload(); }
-        function editMemo(id) { db.transaction("memos","readonly").objectStore("memos").get(id).onsuccess=e=>{ const m=e.target.result; document.getElementById('editingMemoId').value=m.id; document.getElementById('memoTitleInput').value=m.title; document.getElementById('memoContentInput').value=m.content; document.getElementById('memoInputSection').classList.remove('hidden'); document.getElementById('cancelEditBtn').classList.remove('hidden'); window.scrollTo({top:0,behavior:'smooth'}); }; }
+        function editMemo(id) { db.transaction("memos", "readonly").objectStore("memos").get(id).onsuccess=e=>{ const m=e.target.result; document.getElementById('editingMemoId').value=m.id; document.getElementById('memoTitleInput').value=m.title; document.getElementById('memoContentInput').value=m.content; document.getElementById('memoInputSection').classList.remove('hidden'); document.getElementById('cancelEditBtn').classList.remove('hidden'); window.scrollTo({top:0,behavior:'smooth'}); }; }
         function cancelEdit() { document.getElementById('editingMemoId').value=""; document.getElementById('memoTitleInput').value=""; document.getElementById('memoContentInput').value=""; document.getElementById('memoInputSection').classList.add('hidden'); document.getElementById('cancelEditBtn').classList.add('hidden'); }
         function showProgress(t, p) { document.getElementById('progressContainer').style.display='block'; document.getElementById('progressText').innerText=t; document.getElementById('progressFill').style.width=p+'%'; document.getElementById('progressPercent').innerText=Math.round(p)+'%'; }
         function initGoogleAuth() { tokenClient=google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPES,callback:r=>{accessToken=r.access_token;localStorage.setItem('v24_token',accessToken);updateLoginStatusUI(true);}}); }
-        function updateLoginStatusUI(isL) { document.getElementById('syncDot').className="w-2 h-2 rounded-full bg-green-500 animate-pulse"; document.getElementById('signoutBtn')?.classList.remove('hidden'); }
+        function updateLoginStatusUI(isL) { document.getElementById('syncDot').className="w-2 h-2 rounded-full bg-green-500 animate-pulse"; }
         function handleAuthClick() { tokenClient.requestAccessToken({prompt:'consent'}); }
         function handleSignoutClick() { localStorage.removeItem('v24_token'); location.reload(); }
         function togglePage(p) { ['mainPage','memoPage','settingsPage'].forEach(id=>document.getElementById(id).classList.toggle('hidden',id!==p)); if(p==='settingsPage') renderShiftEditor(); if(p==='memoPage') renderMemos(); if(p==='mainPage') renderCalendar(); }
         function toggleMemoInput() { document.getElementById('memoInputSection').classList.toggle('hidden'); }
         function toggleNewCatInput() { document.getElementById('memoCatNew').classList.toggle('hidden',document.getElementById('memoCatSelect').value!=='NEW'); }
         function updateCatDropdown() { if(!db) return; db.transaction("memos","readonly").objectStore("memos").getAll().onsuccess=e=>{ const cats=[...new Set(e.target.result.map(m=>m.cat))]; document.getElementById('memoCatSelect').innerHTML='<option value="">選擇分類...</option><option value="NEW">+ 新分類</option>'+cats.map(c=>`<option value="${c}">${c}</option>`).join(''); }; }
-        function showBanner(m) { document.getElementById('bannerText').innerText=m; document.getElementById('topBanner').className="active bg-white shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200"; }
-        function closeBanner() { localStorage.removeItem('pendingReminder'); document.getElementById('topBanner').className="inactive bg-white shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200"; }
-        function dismissPopup() { showBanner(localStorage.getItem('pendingReminder')); document.getElementById('popupModal').classList.add('hidden'); }
+        function deleteMemo(id) { if(confirm("確定刪除？")) db.transaction("memos","readwrite").objectStore("memos").delete(id).onsuccess=()=>location.reload(); }
         function openFullImg(s) { document.getElementById('modal-content').src=s; document.getElementById('img-modal').style.display='block'; }
         function closeImgModal() { document.getElementById('img-modal').style.display='none'; }
         function toggleCalendar() { isCalCollapsed=!isCalCollapsed; localStorage.setItem('v16_cal_collapsed',isCalCollapsed); renderCalendar(); }
         function renderShiftButtons() { const c=document.getElementById('shiftButtons'); c.innerHTML=Object.keys(shifts).map(id=>`<button onclick="applyShift('${id}')" class="bg-white px-4 py-3 rounded-xl font-bold border" style="color:${shifts[id].color}">${shifts[id].name}</button>`).join('')+`<button onclick="applyShift(null)" class="px-4 py-3 bg-gray-200 rounded-xl font-bold text-gray-500">清除</button>`; }
+        function dismissPopup() { document.getElementById('topBanner').className="active bg-white shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200"; document.getElementById('popupModal').classList.add('hidden'); }
+        function closeBanner() { localStorage.removeItem('pendingReminder'); document.getElementById('topBanner').className="inactive bg-white shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200"; }
         window.onload = init;
     </script>
 </body>
