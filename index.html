@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>工作助手 V25.0</title>
+    <title>工作助手 V25.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://apis.google.com/js/api.js" async defer></script>
@@ -43,7 +43,7 @@
     <div class="global-status">
         <div class="flex justify-between items-center">
             <div id="syncStatusGlobal" class="text-[11px] font-bold flex items-center gap-1 text-gray-400"><span id="syncDot" class="w-2 h-2 rounded-full bg-gray-300"></span> 離線作業 (手遊模式)</div>
-            <div class="text-[10px] text-gray-300 font-mono">v25.0 RAW</div>
+            <div class="text-[10px] text-gray-300 font-mono">v25.1 RAW</div>
         </div>
     </div>
 
@@ -68,7 +68,6 @@
                 <input id="manualDesc" type="text" placeholder="輸入事項..." class="bg-gray-100 p-2 rounded-lg flex-1 text-sm outline-none border-none">
                 <button onclick="handleAddAction()" class="bg-blue-600 text-white px-4 rounded-lg font-bold shadow-md">＋</button>
             </div>
-            <select id="manualMemoLink" class="bg-gray-50 p-2 rounded-lg text-[10px] w-full border-none text-gray-400 outline-none"></select>
         </section>
         <div id="dailyTaskList" class="space-y-2"></div>
     </div>
@@ -144,7 +143,7 @@
 
         let shifts = JSON.parse(localStorage.getItem('v16_shifts')) || { "D": { name: "D更", color: "#3b82f6", tasks: [] } };
         let schedule = JSON.parse(localStorage.getItem('v16_schedule')) || {};
-        let selectedDateStr = new Date().toISOString().split('T')[0];
+        let selectedDateStr = formatDate(new Date());
         let viewDate = new Date();
 
         function init() {
@@ -155,26 +154,41 @@
             if(localStorage.getItem('pendingReminder')) showBanner(localStorage.getItem('pendingReminder'));
         }
 
+        // --- 修復日期格式：不使用 ISO，避免時區偏移 ---
+        function formatDate(d) {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
         function updateClock() {
             const now = new Date();
             document.getElementById('clock').innerText = now.toLocaleTimeString('zh-HK', {hour12: false});
             document.getElementById('fullDate').innerText = now.toLocaleDateString('zh-HK', {year: 'numeric', month: 'long', day: 'numeric', weekday: 'long'});
         }
 
-        // --- 核心：手動事項與突發邏輯 ---
+        // --- 功能回歸：更份與事項 ---
+        function createNewShift() { const id = 'S' + Date.now(); shifts[id] = { name: "新更份", color: "#333333", tasks: [] }; saveShifts(); renderShiftEditor(); renderShiftButtons(); }
+        function saveShifts() { localStorage.setItem('v16_shifts', JSON.stringify(shifts)); }
+        function renderShiftEditor() {
+            const container = document.getElementById('shiftManagerList');
+            container.innerHTML = Object.keys(shifts).map(id => `
+                <div class="ios-card p-4 border-l-8" style="border-color:${shifts[id].color}">
+                    <div class="flex gap-2 mb-2"><input type="text" value="${shifts[id].name}" onchange="shifts['${id}'].name=this.value;saveShifts()" class="font-bold flex-1 border-b outline-none text-sm"><input type="color" value="${shifts[id].color}" onchange="shifts['${id}'].color=this.value;saveShifts()" class="w-8 h-8"><button onclick="if(confirm('刪除？')){delete shifts['${id}'];saveShifts();renderShiftEditor();renderShiftButtons()}" class="text-red-500 font-bold">✕</button></div>
+                    <div class="space-y-2 mb-3">${shifts[id].tasks.map((t, ti) => `<div class="flex gap-1 p-1 bg-gray-50 rounded"><input type="time" value="${t.time}" onchange="shifts['${id}'].tasks[${ti}].time=this.value;saveShifts()" class="text-[10px] border rounded p-1"><input type="text" value="${t.desc}" onchange="shifts['${id}'].tasks[${ti}].desc=this.value;saveShifts()" class="text-[10px] border rounded p-1 flex-1"><button onclick="shifts['${id}'].tasks.splice(${ti},1);saveShifts();renderShiftEditor()" class="text-gray-400">✕</button></div>`).join('')}</div>
+                    <button onclick="shifts['${id}'].tasks.push({time:'08:00',desc:'新項目'});saveShifts();renderShiftEditor()" class="text-[10px] text-blue-500 font-bold">+ 增加子項目</button>
+                </div>`).join('');
+        }
+
         function handleAddAction() {
             const time = document.getElementById('manualTime').value;
             const desc = document.getElementById('manualDesc').value;
-            const mid = document.getElementById('manualMemoLink').value;
             if(!desc) return;
             if(!schedule[selectedDateStr]) schedule[selectedDateStr] = { shiftId: null, customTasks: [] };
-            schedule[selectedDateStr].customTasks.push({ time, desc, memoId: mid ? parseInt(mid) : null });
+            schedule[selectedDateStr].customTasks.push({ time, desc });
             localStorage.setItem('v16_schedule', JSON.stringify(schedule));
-            if(!time) {
-                localStorage.setItem('pendingReminder', desc);
-                document.getElementById('popupMsg').innerText = desc;
-                document.getElementById('popupModal').classList.remove('hidden');
-            }
+            if(!time) { localStorage.setItem('pendingReminder', desc); document.getElementById('popupMsg').innerText = desc; document.getElementById('popupModal').classList.remove('hidden'); }
             renderDailyTasks(); document.getElementById('manualDesc').value = '';
         }
 
@@ -183,28 +197,22 @@
             const d = schedule[selectedDateStr] || { shiftId: null, customTasks: [] };
             let ts = (d.shiftId && shifts[d.shiftId]) ? shifts[d.shiftId].tasks.map(t => ({...t, isTemp: true})) : [];
             ts = [...ts, ...d.customTasks].sort((a,b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
-            db.transaction("memos", "readonly").objectStore("memos").getAll().onsuccess = e => {
-                const memoMap = {}; e.target.result.forEach(m => memoMap[m.id] = m);
-                c.innerHTML = ts.length ? ts.map((t, i) => {
-                    const linked = t.memoId ? memoMap[t.memoId] : null;
-                    return `<div class="ios-card p-4 flex flex-col ${!t.isTemp ? 'emergency-item' : ''}">
-                        <div class="flex justify-between items-center">
-                            <div class="flex items-center gap-3"><span class="font-mono font-bold text-lg">${t.time || '--:--'}</span><span class="font-medium text-gray-800">${t.desc}</span></div>
-                            <button onclick="deleteTask(${i}, ${t.isTemp})" class="text-gray-300">✕</button>
-                        </div>
-                        ${linked ? `<div class="text-[10px] text-blue-500 mt-2 bg-white/50 p-2 rounded-lg" onclick="openMemo(${linked.id})">🔗 連結備忘: <strong>${linked.title}</strong></div>` : ''}
-                    </div>`;
-                }).join('') : '<p class="text-center text-gray-400 py-10 text-xs">今日無事項</p>';
-            };
+            c.innerHTML = ts.length ? ts.map((t, i) => `
+                <div class="ios-card p-4 flex flex-col ${!t.isTemp ? 'emergency-item' : ''}">
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center gap-3"><span class="font-mono font-bold text-lg">${t.time || '--:--'}</span><span class="font-medium text-gray-800">${t.desc}</span></div>
+                        <button onclick="deleteTask(${i}, ${t.isTemp})" class="text-gray-300">✕</button>
+                    </div>
+                </div>`).join('') : '<p class="text-center text-gray-400 py-10 text-xs">今日無事項</p>';
         }
 
         // --- 備忘錄與搜尋 ---
         function renderMemos() {
             if(!db) return;
-            const query = document.getElementById('memoSearchInput')?.value.toLowerCase() || "";
+            const q = document.getElementById('memoSearchInput')?.value.toLowerCase() || "";
             db.transaction("memos", "readonly").objectStore("memos").getAll().onsuccess = e => {
                 let all = e.target.result;
-                if(query) all = all.filter(m => m.title.toLowerCase().includes(query) || m.content.toLowerCase().includes(query) || m.cat.toLowerCase().includes(query));
+                if(q) all = all.filter(m => m.title.toLowerCase().includes(q) || m.content.toLowerCase().includes(q) || m.cat.toLowerCase().includes(q));
                 const groups = {}; all.forEach(m => { if(!groups[m.cat]) groups[m.cat] = []; groups[m.cat].push(m); });
                 document.getElementById('memoList').innerHTML = Object.keys(groups).map(cat => {
                     const bg = catColors[cat] || "#f9fafb";
@@ -213,77 +221,27 @@
                             <div class="flex items-center gap-2"><span>${cat}</span><div class="relative bg-white/50 px-2 py-1 rounded text-[9px] text-blue-600 border" onclick="event.stopPropagation()">🎨 改色<input type="color" value="${bg}" onchange="setCatColor('${cat}', this.value)" class="absolute inset-0 opacity-0"></div></div><span class="text-black/30 text-xs">▼</span>
                         </div>
                         <div class="p-2 space-y-3 bg-white/50 border-t">
-                            ${groups[cat].map(m => `<div id="memo-${m.id}" class="p-3 border rounded-xl bg-white/80 shadow-sm">
-                                <h4 class="font-bold text-sm">${m.title}</h4><p class="text-xs my-2 whitespace-pre-wrap text-gray-700">${m.content}</p>
-                                ${m.photoBlob ? `<img src="${URL.createObjectURL(m.photoBlob)}" onclick="openFullImg(this.src)" class="rounded-lg w-full mb-2 shadow-sm">` : ''}
-                                <div class="flex justify-between items-center text-[8px] text-gray-400"><span>${new Date(m.date).toLocaleString()}</span><div class="flex gap-3"><button onclick="editMemo(${m.id})" class="text-blue-500 font-bold">✎ 編輯</button><button onclick="deleteMemo(${m.id})" class="text-red-400">✕ 刪除</button></div></div>
-                            </div>`).join('')}
+                            ${groups[cat].map(m => `
+                                <div id="memo-${m.id}" class="p-3 border rounded-xl bg-white/80 shadow-sm">
+                                    <h4 class="font-bold text-sm text-blue-900">${m.title}</h4>
+                                    <p class="text-xs my-2 text-gray-700 whitespace-pre-wrap">${m.content}</p>
+                                    ${m.photoBlob ? `<img src="${URL.createObjectURL(m.photoBlob)}" onclick="openFullImg(this.src)" class="rounded-lg w-full mb-2">` : ''}
+                                    <div class="flex justify-between items-center text-[8px] text-gray-400"><span>${new Date(m.date).toLocaleString()}</span><div class="flex gap-3"><button onclick="editMemo(${m.id})" class="text-blue-500 font-bold">✎ 編輯</button><button onclick="deleteMemo(${m.id})" class="text-red-400">✕ 刪除</button></div></div>
+                                </div>`).join('')}
                         </div>
                     </div>`}).join('');
             };
         }
 
-        // --- 更份編輯與管理 ---
-        function createNewShift() { const id = 'S' + Date.now(); shifts[id] = { name: "新更份", color: "#333333", tasks: [] }; saveShifts(); renderShiftEditor(); renderShiftButtons(); }
-        function saveShifts() { localStorage.setItem('v16_shifts', JSON.stringify(shifts)); }
-        function renderShiftEditor() {
-            const container = document.getElementById('shiftManagerList');
-            container.innerHTML = Object.keys(shifts).map(id => `
-                <div class="ios-card p-4 border-l-8" style="border-color:${shifts[id].color}">
-                    <div class="flex gap-2 mb-2"><input type="text" value="${shifts[id].name}" onchange="shifts['${id}'].name=this.value;saveShifts()" class="font-bold flex-1 border-b outline-none text-sm"><input type="color" value="${shifts[id].color}" onchange="shifts['${id}'].color=this.value;saveShifts()" class="w-8 h-8"><button onclick="if(confirm('刪除此更份？')){delete shifts['${id}'];saveShifts();renderShiftEditor();renderShiftButtons()}" class="text-red-500 font-bold">✕</button></div>
-                    <div class="space-y-2 mb-3">${shifts[id].tasks.map((t, ti) => `<div class="flex gap-1 p-1 bg-gray-50 rounded"><input type="time" value="${t.time}" onchange="shifts['${id}'].tasks[${ti}].time=this.value;saveShifts()" class="text-[10px] border rounded p-1"><input type="text" value="${t.desc}" onchange="shifts['${id}'].tasks[${ti}].desc=this.value;saveShifts()" class="text-[10px] border rounded p-1 flex-1"><button onclick="shifts['${id}'].tasks.splice(${ti},1);saveShifts();renderShiftEditor()" class="text-gray-400">✕</button></div>`).join('')}</div>
-                    <button onclick="shifts['${id}'].tasks.push({time:'08:00',desc:'新項目'});saveShifts();renderShiftEditor()" class="text-[10px] text-blue-500 font-bold">+ 增加子項目</button>
-                </div>`).join('');
-        }
-
-        // --- 同步邏輯 (V24.1 基礎) ---
-        async function oneClickBackup() {
-            if(!accessToken) return alert("請先連結 Google");
-            showProgress("正在打包原始圖...", 10);
-            const all = await new Promise(r => db.transaction("memos").objectStore("memos").getAll().onsuccess = e => r(e.target.result));
-            for(let i=0; i<all.length; i++) {
-                if(all[i].photoBlob && !all[i].googleDriveFileId) {
-                    showProgress(`上傳照片 ${i+1}/${all.length}`, 20 + (i/all.length*60));
-                    all[i].googleDriveFileId = await uploadRawFile(all[i].photoBlob);
-                    const tx = db.transaction("memos", "readwrite"); tx.objectStore("memos").put(all[i]);
-                }
-            }
-            showProgress("上傳存檔 JSON...", 90);
-            await uploadBackupJson({ shifts, schedule, memos: all.map(m => ({...m, photoBlob: null})) });
-            showProgress("完成！", 100); setTimeout(() => { document.getElementById('progressContainer').style.display='none'; alert("雲端備份成功！"); }, 1000);
-        }
-
-        async function oneClickRestore() {
-            if(!accessToken) return alert("請先連結 Google");
-            showProgress("獲取存檔...", 20);
-            const cloud = await downloadBackupJson();
-            if(!cloud) return alert("無雲端存檔！");
-            if(!confirm("確定還原？(不重覆下載已有照片)")) return;
-            shifts = cloud.shifts; schedule = cloud.schedule;
-            saveShifts(); localStorage.setItem('v16_schedule', JSON.stringify(schedule));
-            for(let i=0; i<cloud.memos.length; i++) {
-                showProgress(`載入原始圖 ${i+1}/${cloud.memos.length}`, 30 + (i/cloud.memos.length*60));
-                const tx = db.transaction("memos", "readwrite");
-                const exist = await new Promise(r => tx.objectStore("memos").get(cloud.memos[i].id).onsuccess = e => r(e.target.result));
-                if(!exist) {
-                    if(cloud.memos[i].googleDriveFileId) cloud.memos[i].photoBlob = await downloadRawFile(cloud.memos[i].googleDriveFileId);
-                    tx.objectStore("memos").add(cloud.memos[i]);
-                }
-            }
-            showProgress("完畢！", 100); setTimeout(() => location.reload(), 1000);
-        }
-
-        // --- 基礎工具 ---
-        async function uploadRawFile(b) { const f=new FormData(); f.append('metadata',new Blob([JSON.stringify({name:`RAW_${Date.now()}.jpg`})],{type:'application/json'})); f.append('file',b); const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{method:'POST',headers:{'Authorization':`Bearer ${accessToken}`},body:f}); return (await r.json()).id; }
-        async function downloadRawFile(id) { const r=await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`,{headers:{'Authorization':`Bearer ${accessToken}`}}); return await r.blob(); }
-        async function uploadBackupJson(d) { const f=new FormData(); f.append('metadata',new Blob([JSON.stringify({name:'V24_MASTER_SAVE.json'})],{type:'application/json'})); f.append('file',new Blob([JSON.stringify(d)],{type:'application/json'})); const s=await fetch(`https://www.googleapis.com/drive/v3/files?q=name='V24_MASTER_SAVE.json'`,{headers:{'Authorization':`Bearer ${accessToken}`}}); const l=await s.json(); let u='https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',m='POST'; if(l.files.length>0){ u=`https://www.googleapis.com/upload/drive/v3/files/${l.files[0].id}?uploadType=multipart`; m='PATCH'; } await fetch(u,{method:m,headers:{'Authorization':`Bearer ${accessToken}`},body:f}); }
-        async function downloadBackupJson() { const s=await fetch(`https://www.googleapis.com/drive/v3/files?q=name='V24_MASTER_SAVE.json'`,{headers:{'Authorization':`Bearer ${accessToken}`}}); const l=await s.json(); if(l.files.length>0){ const f=await fetch(`https://www.googleapis.com/drive/v3/files/${l.files[0].id}?alt=media`,{headers:{'Authorization':`Bearer ${accessToken}`}}); return await f.json(); } return null; }
+        // --- 基礎框架與日曆 ---
         function renderCalendar() {
             const grid = document.getElementById('calendarGrid'); grid.innerHTML = '';
-            const m = isCalCollapsed ? new Date(selectedDateStr).getMonth() : viewDate.getMonth(), y = isCalCollapsed ? new Date(selectedDateStr).getFullYear() : viewDate.getFullYear();
+            const m = isCalCollapsed ? new Date(selectedDateStr.replace(/-/g, '/')).getMonth() : viewDate.getMonth();
+            const y = isCalCollapsed ? new Date(selectedDateStr.replace(/-/g, '/')).getFullYear() : viewDate.getFullYear();
             document.getElementById('calendarTitle').innerText = `${y}年 ${m + 1}月`;
             if (isCalCollapsed) {
-                const sun = new Date(selectedDateStr); sun.setDate(sun.getDate() - sun.getDay());
+                const current = new Date(selectedDateStr.replace(/-/g, '/'));
+                const sun = new Date(current); sun.setDate(current.getDate() - current.getDay());
                 for (let i = 0; i < 7; i++) { const d = new Date(sun); d.setDate(sun.getDate() + i); renderDayCell(grid, d); }
             } else {
                 const f = new Date(y, m, 1).getDay(), t = new Date(y, m + 1, 0).getDate();
@@ -292,48 +250,48 @@
             }
         }
         function renderDayCell(c, d) {
-            const ds = d.toISOString().split('T')[0], h = HK_HOLIDAYS_2026[ds], s = schedule[ds]?.shiftId ? shifts[schedule[ds].shiftId] : null;
+            const ds = formatDate(d), h = HK_HOLIDAYS_2026[ds], s = schedule[ds]?.shiftId ? shifts[schedule[ds].shiftId] : null;
             const div = document.createElement('div'); div.className = `day-cell ${ds === selectedDateStr ? 'selected' : ''}`;
             div.onclick = () => { selectedDateStr = ds; renderCalendar(); renderDailyTasks(); };
             div.innerHTML = `${h ? `<span class="holiday-name">${h}</span>` : ''}<span class="text-xs font-bold ${d.getDay()===0||h?'text-sunday':''}">${d.getDate()}</span>${s?`<div class="shift-tag" style="background:${s.color}20;color:${s.color}">${s.name}</div>`:''}`;
             c.appendChild(div);
         }
-        async function saveMemoLocal() {
-            const id = document.getElementById('editingMemoId').value;
-            const cat = document.getElementById('memoCatSelect').value === 'NEW' ? document.getElementById('memoCatNew').value : document.getElementById('memoCatSelect').value;
-            const file = document.getElementById('memoPhotoInput').files[0];
-            const data = { title: document.getElementById('memoTitleInput').value, content: document.getElementById('memoContentInput').value, cat: cat || "一般", date: Date.now(), photoBlob: file || null };
-            const tx = db.transaction("memos", "readwrite");
-            if(id) {
-                data.id = parseInt(id); const old = await new Promise(r => db.transaction("memos").objectStore("memos").get(data.id).onsuccess = e => r(e.target.result));
-                if(!file) { data.photoBlob = old.photoBlob; data.googleDriveFileId = old.googleDriveFileId; }
-                tx.objectStore("memos").put(data);
-            } else { tx.objectStore("memos").add(data); }
-            tx.oncomplete = () => location.reload();
+        function navigateCalendar(s) {
+            if(isCalCollapsed) { let d=new Date(selectedDateStr.replace(/-/g, '/')); d.setDate(d.getDate()+s*7); selectedDateStr=formatDate(d); viewDate=new Date(selectedDateStr.replace(/-/g, '/')); }
+            else { viewDate.setMonth(viewDate.getMonth()+s); }
+            renderCalendar(); renderDailyTasks();
         }
-        function navigateCalendar(s) { if(isCalCollapsed) { const d=new Date(selectedDateStr); d.setDate(d.getDate()+s*7); selectedDateStr=d.toISOString().split('T')[0]; viewDate=new Date(selectedDateStr); } else { viewDate.setMonth(viewDate.getMonth()+s); } renderCalendar(); renderDailyTasks(); }
-        function togglePage(p) { ['mainPage','memoPage','settingsPage'].forEach(id=>document.getElementById(id).classList.toggle('hidden',id!==p)); if(p==='settingsPage') renderShiftEditor(); if(p==='memoPage') renderMemos(); if(p==='mainPage') renderCalendar(); }
-        function showBanner(m) { document.getElementById('bannerText').innerText=m; document.getElementById('topBanner').className="active bg-white shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200"; }
-        function closeBanner() { localStorage.removeItem('pendingReminder'); document.getElementById('topBanner').className="inactive bg-white shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200"; }
-        function dismissPopup() { showBanner(localStorage.getItem('pendingReminder')); document.getElementById('popupModal').classList.add('hidden'); }
-        function initGoogleAuth() { tokenClient=google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPES,callback:r=>{accessToken=r.access_token;localStorage.setItem('v24_token',accessToken);updateLoginStatusUI(true);}}); }
-        function updateLoginStatusUI(isL) { document.getElementById('syncDot').className="w-2 h-2 rounded-full bg-green-500 animate-pulse"; }
-        function handleAuthClick() { tokenClient.requestAccessToken({prompt:'consent'}); }
-        function handleSignoutClick() { localStorage.removeItem('v24_token'); location.reload(); }
-        function showProgress(t, p) { document.getElementById('progressContainer').style.display='block'; document.getElementById('progressText').innerText=t; document.getElementById('progressFill').style.width=p+'%'; document.getElementById('progressPercent').innerText=Math.round(p)+'%'; }
-        function toggleMemoInput() { document.getElementById('memoInputSection').classList.toggle('hidden'); }
-        function toggleNewCatInput() { document.getElementById('memoCatNew').classList.toggle('hidden',document.getElementById('memoCatSelect').value!=='NEW'); }
-        function updateCatDropdown() { db.transaction("memos","readonly").objectStore("memos").getAll().onsuccess=e=>{ const cats=[...new Set(e.target.result.map(m=>m.cat))]; document.getElementById('memoCatSelect').innerHTML='<option value="">選擇分類...</option><option value="NEW">+ 新分類</option>'+cats.map(c=>`<option value="${c}">${c}</option>`).join(''); }; }
+
+        // --- 同步與功能助手 ---
+        async function oneClickBackup() { if(!accessToken) return alert("請先連結 Google"); showProgress("打包原始圖...", 10); const all = await new Promise(r => db.transaction("memos").objectStore("memos").getAll().onsuccess = e => r(e.target.result)); for(let i=0; i<all.length; i++) { if(all[i].photoBlob && !all[i].googleDriveFileId) { showProgress(`上傳照片 ${i+1}/${all.length}`, 20 + (i/all.length*60)); all[i].googleDriveFileId = await uploadRawFile(all[i].photoBlob); const tx = db.transaction("memos", "readwrite"); tx.objectStore("memos").put(all[i]); } } showProgress("上傳存檔...", 90); await uploadBackupJson({ shifts, schedule, memos: all.map(m => ({...m, photoBlob: null})) }); showProgress("完成！", 100); setTimeout(() => { document.getElementById('progressContainer').style.display='none'; alert("雲端備份成功！"); }, 1000); }
+        async function oneClickRestore() { if(!accessToken) return alert("請先連結 Google"); showProgress("獲取存檔...", 20); const cloud = await downloadBackupJson(); if(!cloud) return alert("無雲端存檔！"); if(!confirm("確定還原？")) return; shifts = cloud.shifts; schedule = cloud.schedule; localStorage.setItem('v16_shifts', JSON.stringify(shifts)); localStorage.setItem('v16_schedule', JSON.stringify(schedule)); for(let i=0; i<cloud.memos.length; i++) { showProgress(`載入原始圖 ${i+1}/${cloud.memos.length}`, 30 + (i/cloud.memos.length*60)); const tx = db.transaction("memos", "readwrite"); const exist = await new Promise(r => tx.objectStore("memos").get(cloud.memos[i].id).onsuccess = e => r(e.target.result)); if(!exist) { if(cloud.memos[i].googleDriveFileId) cloud.memos[i].photoBlob = await downloadRawFile(cloud.memos[i].googleDriveFileId); tx.objectStore("memos").add(cloud.memos[i]); } } showProgress("完畢！", 100); setTimeout(() => location.reload(), 1000); }
+        async function uploadRawFile(b) { const f=new FormData(); f.append('metadata',new Blob([JSON.stringify({name:`RAW_${Date.now()}.jpg`})],{type:'application/json'})); f.append('file',b); const r=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',{method:'POST',headers:{'Authorization':`Bearer ${accessToken}`},body:f}); return (await r.json()).id; }
+        async function downloadRawFile(id) { const r=await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`,{headers:{'Authorization':`Bearer ${accessToken}`}}); return await r.blob(); }
+        async function uploadBackupJson(d) { const f=new FormData(); f.append('metadata',new Blob([JSON.stringify({name:'V24_MASTER_SAVE.json'})],{type:'application/json'})); f.append('file',new Blob([JSON.stringify(d)],{type:'application/json'})); const s=await fetch(`https://www.googleapis.com/drive/v3/files?q=name='V24_MASTER_SAVE.json'`,{headers:{'Authorization':`Bearer ${accessToken}`}}); const l=await s.json(); let u='https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',m='POST'; if(l.files.length>0){ u=`https://www.googleapis.com/upload/drive/v3/files/${l.files[0].id}?uploadType=multipart`; m='PATCH'; } await fetch(u,{method:m,headers:{'Authorization':`Bearer ${accessToken}`},body:f}); }
+        async function downloadBackupJson() { const s=await fetch(`https://www.googleapis.com/drive/v3/files?q=name='V24_MASTER_SAVE.json'`,{headers:{'Authorization':`Bearer ${accessToken}`}}); const l=await s.json(); if(l.files.length>0){ const f=await fetch(`https://www.googleapis.com/drive/v3/files/${l.files[0].id}?alt=media`,{headers:{'Authorization':`Bearer ${accessToken}`}}); return await f.json(); } return null; }
+        function saveMemoLocal() { const id = document.getElementById('editingMemoId').value; const cat = document.getElementById('memoCatSelect').value === 'NEW' ? document.getElementById('memoCatNew').value : document.getElementById('memoCatSelect').value; const file = document.getElementById('memoPhotoInput').files[0]; const data = { title: document.getElementById('memoTitleInput').value, content: document.getElementById('memoContentInput').value, cat: cat || "一般", date: Date.now(), photoBlob: file || null }; const tx = db.transaction("memos", "readwrite"); if(id) { data.id = parseInt(id); tx.objectStore("memos").put(data); } else { tx.objectStore("memos").add(data); } tx.oncomplete = () => location.reload(); }
+        function setCatColor(cat, color) { catColors[cat] = color; localStorage.setItem('v21_cat_colors', JSON.stringify(catColors)); renderMemos(); }
+        function applyShift(id) { if(!schedule[selectedDateStr]) schedule[selectedDateStr]={shiftId:null,customTasks:[]}; schedule[selectedDateStr].shiftId=id; localStorage.setItem('v16_schedule',JSON.stringify(schedule)); let n=new Date(selectedDateStr.replace(/-/g, '/')); n.setDate(n.getDate()+1); selectedDateStr=formatDate(n); renderCalendar(); renderDailyTasks(); }
         function deleteTask(i, t) { if(!confirm("刪除？")) return; if(t) alert("範本內容請在設定頁修改。"); else { schedule[selectedDateStr].customTasks.splice(i-(schedule[selectedDateStr].shiftId?shifts[schedule[selectedDateStr].shiftId].tasks.length:0),1); localStorage.setItem('v16_schedule',JSON.stringify(schedule)); renderDailyTasks(); } }
         function deleteMemo(id) { if(confirm("確定刪除？")) db.transaction("memos","readwrite").objectStore("memos").delete(id).onsuccess=()=>location.reload(); }
         function editMemo(id) { db.transaction("memos","readonly").objectStore("memos").get(id).onsuccess=e=>{ const m=e.target.result; document.getElementById('editingMemoId').value=m.id; document.getElementById('memoTitleInput').value=m.title; document.getElementById('memoContentInput').value=m.content; document.getElementById('memoInputSection').classList.remove('hidden'); document.getElementById('cancelEditBtn').classList.remove('hidden'); window.scrollTo({top:0,behavior:'smooth'}); }; }
         function cancelEdit() { document.getElementById('editingMemoId').value=""; document.getElementById('memoTitleInput').value=""; document.getElementById('memoContentInput').value=""; document.getElementById('memoInputSection').classList.add('hidden'); document.getElementById('cancelEditBtn').classList.add('hidden'); }
+        function showProgress(t, p) { document.getElementById('progressContainer').style.display='block'; document.getElementById('progressText').innerText=t; document.getElementById('progressFill').style.width=p+'%'; document.getElementById('progressPercent').innerText=Math.round(p)+'%'; }
+        function initGoogleAuth() { tokenClient=google.accounts.oauth2.initTokenClient({client_id:CLIENT_ID,scope:SCOPES,callback:r=>{accessToken=r.access_token;localStorage.setItem('v24_token',accessToken);updateLoginStatusUI(true);}}); }
+        function updateLoginStatusUI(isL) { document.getElementById('syncDot').className="w-2 h-2 rounded-full bg-green-500 animate-pulse"; document.getElementById('signoutBtn')?.classList.remove('hidden'); }
+        function handleAuthClick() { tokenClient.requestAccessToken({prompt:'consent'}); }
+        function handleSignoutClick() { localStorage.removeItem('v24_token'); location.reload(); }
+        function togglePage(p) { ['mainPage','memoPage','settingsPage'].forEach(id=>document.getElementById(id).classList.toggle('hidden',id!==p)); if(p==='settingsPage') renderShiftEditor(); if(p==='memoPage') renderMemos(); if(p==='mainPage') renderCalendar(); }
+        function toggleMemoInput() { document.getElementById('memoInputSection').classList.toggle('hidden'); }
+        function toggleNewCatInput() { document.getElementById('memoCatNew').classList.toggle('hidden',document.getElementById('memoCatSelect').value!=='NEW'); }
+        function updateCatDropdown() { if(!db) return; db.transaction("memos","readonly").objectStore("memos").getAll().onsuccess=e=>{ const cats=[...new Set(e.target.result.map(m=>m.cat))]; document.getElementById('memoCatSelect').innerHTML='<option value="">選擇分類...</option><option value="NEW">+ 新分類</option>'+cats.map(c=>`<option value="${c}">${c}</option>`).join(''); }; }
+        function showBanner(m) { document.getElementById('bannerText').innerText=m; document.getElementById('topBanner').className="active bg-white shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200"; }
+        function closeBanner() { localStorage.removeItem('pendingReminder'); document.getElementById('topBanner').className="inactive bg-white shadow-2xl rounded-2xl p-4 flex justify-between items-center border border-red-200"; }
+        function dismissPopup() { showBanner(localStorage.getItem('pendingReminder')); document.getElementById('popupModal').classList.add('hidden'); }
         function openFullImg(s) { document.getElementById('modal-content').src=s; document.getElementById('img-modal').style.display='block'; }
         function closeImgModal() { document.getElementById('img-modal').style.display='none'; }
         function toggleCalendar() { isCalCollapsed=!isCalCollapsed; localStorage.setItem('v16_cal_collapsed',isCalCollapsed); renderCalendar(); }
         function renderShiftButtons() { const c=document.getElementById('shiftButtons'); c.innerHTML=Object.keys(shifts).map(id=>`<button onclick="applyShift('${id}')" class="bg-white px-4 py-3 rounded-xl font-bold border" style="color:${shifts[id].color}">${shifts[id].name}</button>`).join('')+`<button onclick="applyShift(null)" class="px-4 py-3 bg-gray-200 rounded-xl font-bold text-gray-500">清除</button>`; }
-        function applyShift(id) { if(!schedule[selectedDateStr]) schedule[selectedDateStr]={shiftId:null,customTasks:[]}; schedule[selectedDateStr].shiftId=id; localStorage.setItem('v16_schedule',JSON.stringify(schedule)); let n=new Date(selectedDateStr); n.setDate(n.getDate()+1); selectedDateStr=n.toISOString().split('T')[0]; renderCalendar(); renderDailyTasks(); }
-        function openMemo(id) { togglePage('memoPage'); setTimeout(() => { const el = document.getElementById(`memo-${id}`); if(el) { el.scrollIntoView({behavior:'smooth'}); el.parentElement.classList.remove('hidden'); } }, 500); }
         window.onload = init;
     </script>
 </body>
